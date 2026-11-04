@@ -59,6 +59,34 @@ def http_json(url, headers, timeout=10):
         return json.loads(resp.read().decode("utf-8"))
 
 
+def fetch_kline_tencent(secid, limit=250):
+    market, code = secid.split(".")
+    if market == "1":
+        sym = "sh" + code
+    elif market == "0":
+        sym = ("bj" if code.startswith("899") else "sz") + code
+    else:
+        raise RuntimeError("未知市场 %s" % secid)
+    url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,,%d,qfq"
+           % (sym, limit))
+    payload = http_json(url, {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"},
+                        timeout=10)
+    data = payload["data"][sym]
+    bars = data.get("day") or data.get("qfqday") or []
+    if len(bars) < 30:
+        raise RuntimeError("腾讯K线不足：%s" % sym)
+    out = []
+    prev = None
+    for bar in bars:
+        date, op, close, high, low, vol = bar[:6]
+        pct = 0.0 if prev is None else (float(close) / prev - 1) * 100
+        amp = 0.0 if prev is None else (float(high) - float(low)) / prev * 100
+        out.append("%s,%s,%s,%s,%s,%s,0,%.2f,%.2f,0,0" %
+                   (date, op, close, high, low, vol, amp, pct))
+        prev = float(close)
+    return out
+
+
 def fetch_kline(secid, limit=250):
     last = None
     for host in KLINE_HOSTS:
@@ -75,7 +103,10 @@ def fetch_kline(secid, limit=250):
             except Exception as exc:  # noqa: BLE001
                 last = exc
                 time.sleep(1.5)
-    raise RuntimeError("K线抓取失败 %s: %s" % (secid, last))
+    try:
+        return fetch_kline_tencent(secid, limit)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("K线抓取失败 %s: %s / %s" % (secid, last, exc))
 
 
 def fetch_valuation(dj_code):
