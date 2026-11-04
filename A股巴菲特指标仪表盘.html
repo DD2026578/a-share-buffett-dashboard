@@ -192,7 +192,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
           <button class="btn btn-g" id="btnPng">导出图片</button>
         </div>
       </div>
-      <div class="legend" style="padding:0 4px 8px"><span><i style="background:#2563eb"></i>证券化率</span><span><i style="background:rgba(37,99,235,.18)"></i>均值 ±1σ</span><span><i style="background:#dc2626"></i>阈值线</span></div>
+      <div class="legend" id="mainLegend" style="padding:0 4px 8px"><span><i style="background:#2563eb"></i>证券化率</span><span><i style="background:rgba(37,99,235,.18)"></i>均值 ±1σ</span><span><i style="background:#dc2626"></i>阈值线</span></div>
       <div class="chart-box" id="mainChart"></div>
     </div>
   </section>
@@ -787,6 +787,19 @@ body.simple #idxView button[data-view="corr"]{display:none}
       });
     }
     charts.main.setOption(option,true);
+    updateMainLegend();
+  }
+
+  function updateMainLegend(){
+    var el=$('mainLegend'); if(!el) return;
+    var P=palette();
+    if(metric==='ratio'){
+      el.innerHTML='<span><i style="background:'+P.line+'"></i>证券化率</span>'+
+        '<span><i style="background:'+(theme==='dark'?'rgba(106,162,255,.25)':'rgba(37,99,235,.18)')+'"></i>均值 ±1σ</span>'+
+        '<span><i style="background:#dc2626"></i>阈值线</span>';
+    }else{
+      el.innerHTML='<span><i style="background:'+P.index+'"></i>880001 指数</span>';
+    }
   }
 
   function drawIntra(){
