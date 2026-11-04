@@ -46,6 +46,7 @@ DJ_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://danjuanfunds.com/
 
 CACHE = {"ts": 0, "data": None}
 MARKET_VAL = {"ts": 0, "data": None}
+PE_HIST_CACHE = {}
 LOCK = threading.Lock()
 KLINE_HOSTS = [
     "https://push2his.eastmoney.com",
@@ -60,7 +61,7 @@ def http_json(url, headers, timeout=10):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def fetch_kline_tencent(secid, limit=250):
+def fetch_kline_tencent(secid, limit=3000):
     market, code = secid.split(".")
     if market == "1":
         sym = "sh" + code
@@ -88,7 +89,7 @@ def fetch_kline_tencent(secid, limit=250):
     return out
 
 
-def fetch_kline(secid, limit=250):
+def fetch_kline(secid, limit=3000):
     last = None
     for host in KLINE_HOSTS:
         for _ in range(2):
@@ -220,6 +221,70 @@ def market_valuation():
     return data
 
 
+def quantile(values, q):
+    if not values:
+        return None
+    vals = sorted(values)
+    k = (len(vals) - 1) * q
+    lo = int(k)
+    hi = min(lo + 1, len(vals) - 1)
+    return round(vals[lo] + (vals[hi] - vals[lo]) * (k - lo), 2)
+
+
+def fetch_pe_history(dj_code):
+    """蛋卷 10 年 PE 周频序列，缓存 1 小时。"""
+    if not dj_code:
+        return None
+    now = time.time()
+    cached = PE_HIST_CACHE.get(dj_code)
+    if cached and now - cached["ts"] < 3600:
+        return cached["data"]
+    data = None
+    try:
+        payload = http_json(
+            "https://danjuanfunds.com/djapi/index_eva/pe_history/%s?day=all" % dj_code,
+            DJ_HEADERS, timeout=10)
+        items = payload["data"]["index_eva_pe_growths"]
+        dates = [datetime.datetime.fromtimestamp(float(i["ts"]) / 1000, CST).strftime("%Y-%m-%d")
+                 for i in items]
+        pes = [float(i["pe"]) for i in items]
+        if len(pes) > 30:
+            data = {"dates": dates, "pe": pes}
+    except Exception:  # noqa: BLE001
+        data = None
+    PE_HIST_CACHE[dj_code] = {"ts": now, "data": data}
+    return data
+
+
+def attach_pe_channel(val, dj_code):
+    if not val or not dj_code:
+        return val
+    hist = fetch_pe_history(dj_code)
+    if not hist:
+        return val
+    pes = hist["pe"]
+    val["pe_low"] = quantile(pes, 0.2)
+    val["pe_mid"] = quantile(pes, 0.5)
+    val["pe_high"] = quantile(pes, 0.8)
+    pe = val.get("pe")
+    if pe is not None and val["pe_low"] is not None:
+        if pe < val["pe_low"]:
+            val["pe_zone"] = "低估"
+        elif pe < val["pe_mid"]:
+            val["pe_zone"] = "偏低"
+        elif pe < val["pe_high"]:
+            val["pe_zone"] = "正常"
+        else:
+            val["pe_zone"] = "高估"
+    step = max(1, len(hist["dates"]) // 120)
+    idxs = list(range(0, len(hist["dates"]), step))
+    if idxs[-1] != len(hist["dates"]) - 1:
+        idxs.append(len(hist["dates"]) - 1)
+    val["pe_hist"] = {"dates": [hist["dates"][i] for i in idxs],
+                      "pe": [round(pes[i], 2) for i in idxs]}
+    return val
+
+
 def fetch_valuation(dj_code):
     if not dj_code:
         return None
@@ -344,6 +409,23 @@ def compute_index(item, bars, valuation):
     low250 = min(closes[-250:])
     pos250 = round((last["close"] - low250) / (high250 - low250) * 100, 1) if high250 != low250 else 50
 
+    def ma_full(n):
+        out = []
+        s = 0.0
+        for i, v in enumerate(closes):
+            s += v
+            if i >= n:
+                s -= closes[i - n]
+            out.append(round(s / n, 2) if i >= n - 1 else None)
+        return out
+
+    ma20f = ma_full(20)
+    ma60f = ma_full(60)
+    step = max(1, len(parsed) // 600)
+    idxs = list(range(0, len(parsed), step))
+    if idxs[-1] != len(parsed) - 1:
+        idxs.append(len(parsed) - 1)
+
     metrics = {
         "code": item["code"],
         "name": item["name"],
@@ -364,8 +446,13 @@ def compute_index(item, bars, valuation):
         "low250": round(low250, 2),
         "pos250": pos250,
         "valuation": valuation,
-        "series": closes[-250:],
-        "dates": [p["date"] for p in parsed][-250:],
+        "series": [parsed[i]["close"] for i in idxs],
+        "dates": [parsed[i]["date"] for i in idxs],
+        "ma20s": [ma20f[i] for i in idxs],
+        "ma60s": [ma60f[i] for i in idxs],
+        "ret10y": round((closes[-1] / closes[0] - 1) * 100, 2) if len(closes) > 1 else None,
+        "high10y": round(max(closes), 2),
+        "low10y": round(min(closes), 2),
     }
     metrics["signals"] = signal_list(metrics, prev_hist)
     return metrics
@@ -457,8 +544,11 @@ def correlation_matrix(items, days=60):
 
 def build_payload():
     with ThreadPoolExecutor(max_workers=3) as pool:
-        results = list(pool.map(lambda it: (it, fetch_kline(it["secid"])), INDICES))
-    valuations = {it["code"]: fetch_valuation(it["dj"]) for it in INDICES}
+        results = list(pool.map(lambda it: (it, fetch_kline(it["secid"], 3000)), INDICES))
+    valuations = {}
+    for it in INDICES:
+        val = fetch_valuation(it["dj"])
+        valuations[it["code"]] = attach_pe_channel(val, it["dj"])
     mkt = market_valuation()
     if not valuations.get("sh000001"):
         valuations["sh000001"] = mkt.get("sh")
@@ -471,7 +561,7 @@ def build_payload():
     # 归一化走势（按周采样，基准 100）
     base = items[0]
     dates = base["dates"]
-    step = max(1, len(dates) // 52)
+    step = max(1, len(dates) // 120)
     sampled_dates = dates[::step]
     norm = {}
     for it in items:
