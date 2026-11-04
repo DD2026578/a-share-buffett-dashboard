@@ -850,17 +850,22 @@ body.simple #idxView button[data-view="corr"]{display:none}
         xAxis:{type:'category',data:v.pe_hist.dates,axisLabel:{color:Q.axis,fontSize:9,interval:Math.max(0,Math.floor(v.pe_hist.dates.length/8))},axisLine:{lineStyle:{color:Q.grid}},axisTick:{show:false}},
         yAxis:{type:'value',scale:true,axisLabel:{color:Q.axis,fontSize:9},splitLine:{lineStyle:{color:Q.grid}}},
         series:[{name:'PE',type:'line',data:pes,symbol:'none',lineStyle:{width:1.8,color:Q.line},
-          markLine:{silent:true,symbol:'none',label:{color:Q.mut,fontSize:9,position:'insideEndTop'},
+          markLine:{silent:true,symbol:'none',
             data:[
-              {yAxis:v.pe_low,name:'低估 '+v.pe_low,lineStyle:{color:'#047857'}},
-              {yAxis:v.pe_mid,name:'中轴 '+v.pe_mid,lineStyle:{color:'#64748b'}},
-              {yAxis:v.pe_high,name:'高估 '+v.pe_high,lineStyle:{color:'#dc2626'}}
+              {yAxis:v.pe_low,name:'低估',lineStyle:{color:'#047857',width:2.5,type:'solid'},
+               label:{show:true,position:'insideEndTop',formatter:'低估线 '+v.pe_low,color:'#fff',
+                 backgroundColor:'#047857',padding:[3,7],borderRadius:4,fontSize:10,fontWeight:700}},
+              {yAxis:v.pe_mid,name:'中轴',lineStyle:{color:'#94a3b8',width:1,type:'dashed'},
+               label:{show:true,position:'insideEndTop',formatter:'中轴 '+v.pe_mid,color:'#64748b',fontSize:9,backgroundColor:'transparent'}},
+              {yAxis:v.pe_high,name:'高估',lineStyle:{color:'#dc2626',width:2.5,type:'solid'},
+               label:{show:true,position:'insideEndTop',formatter:'高估线 '+v.pe_high,color:'#fff',
+                 backgroundColor:'#dc2626',padding:[3,7],borderRadius:4,fontSize:10,fontWeight:700}}
             ]},
           markArea:{silent:true,data:[
-            [{yAxis:0,itemStyle:{color:'rgba(4,120,87,.08)'}},{yAxis:v.pe_low}],
-            [{yAxis:v.pe_low,itemStyle:{color:'rgba(15,118,110,.06)'}},{yAxis:v.pe_mid}],
+            [{yAxis:0,itemStyle:{color:'rgba(4,120,87,.12)'}},{yAxis:v.pe_low}],
+            [{yAxis:v.pe_low,itemStyle:{color:'rgba(15,118,110,.07)'}},{yAxis:v.pe_mid}],
             [{yAxis:v.pe_mid,itemStyle:{color:'rgba(100,116,139,.04)'}},{yAxis:v.pe_high}],
-            [{yAxis:v.pe_high,itemStyle:{color:'rgba(220,38,38,.07)'}},{yAxis:maxPe}]
+            [{yAxis:v.pe_high,itemStyle:{color:'rgba(220,38,38,.10)'}},{yAxis:maxPe}]
           ]},
           markPoint:{symbol:'circle',symbolSize:8,itemStyle:{color:Q.line,borderColor:Q.bg,borderWidth:2},
             label:{show:true,position:'top',color:Q.line,fontSize:10,formatter:function(){return v.pe;}},
