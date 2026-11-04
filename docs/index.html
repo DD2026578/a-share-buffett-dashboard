@@ -292,7 +292,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     <div class="four">
       <div class="stat"><div class="k">最后更新</div><div class="v sm" id="stUpdated">--</div><div class="d">Asia/Shanghai</div></div>
       <div class="stat"><div class="k">刷新频率</div><div class="v">30 秒</div><div class="d">交易时段 30s / 其余 5min</div></div>
-      <div class="stat"><div class="k">数据源</div><div class="v">东方财富 · 蛋卷</div><div class="d">总市值 / 估值</div></div>
+      <div class="stat"><div class="k">数据源</div><div class="v sm" id="stSource">--</div><div class="d" id="stSourceD">总市值 / 估值 / 情绪</div></div>
       <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d">本地 127.0.0.1:8787</div></div>
     </div>
   </section>
@@ -437,16 +437,16 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   function renderMarket(){
     if(!API) return;
     var m=API.market;
-    $('mAmount').textContent=fmt(m.amount,2)+' 万亿';
-    $('mZt').textContent=m.zt+' / '+m.dt;
-    $('mZtD').textContent='涨跌停比 '+(m.dt? (m.zt/m.dt).toFixed(1):'—')+':1';
+    $('mAmount').textContent=m.amount!=null?fmt(m.amount,2)+' 万亿':'—';
+    $('mZt').textContent=(m.zt!=null?m.zt:'—')+' / '+(m.dt!=null?m.dt:'—');
+    $('mZtD').textContent=(m.zt!=null&&m.dt!=null)?('涨跌停比 '+(m.dt?(m.zt/m.dt).toFixed(1):'—')+':1'):'涨跌停数据暂不可用';
     $('mTop10').textContent=fmt(m.top10,1)+'%';
     $('mTop10D').textContent=m.top10_names&&m.top10_names.length?m.top10_names.slice(0,3).join(' / '):'前十大个股合计';
     $('mBj').textContent=fmt(m.bj_share,2)+'%';
     $('methodBj').textContent=fmt(m.bj_share,2)+'%';
     $('methodTtm').textContent=fmt(API.ttm.gdp,2);
     $('methodTtmRatio').textContent=fmt(API.ttm.ratio,2)+'%';
-    $('intraMeta').textContent='成交额 '+fmt(m.amount,2)+' 万亿 · 涨停 '+m.zt+' 家';
+    $('intraMeta').textContent='成交额 '+(m.amount!=null?fmt(m.amount,2)+' 万亿':'—')+' · 涨停 '+(m.zt!=null?m.zt:'—')+' 家';
   }
 
   function renderCompare(){
@@ -481,9 +481,15 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   function renderStatus(){
     if(!API){ $('stState').textContent='离线模式'; $('stState').style.color='var(--mut)'; return; }
     $('stUpdated').textContent=API.updated;
+    if(API.sources){
+      $('stSource').textContent=API.sources.caps+' · 蛋卷';
+      $('stSourceD').textContent='成交额：'+API.sources.amount+(API.sources.pools?' · 涨跌停正常':' · 涨跌停不可用');
+    }
     var stale=(new Date().getTime()-new Date(API.updated.replace(/-/g,'/')).getTime())>10*60*1000;
-    $('stState').textContent=stale?'数据可能过期':'运行中';
-    $('stState').style.color=stale?'var(--rose)':'var(--green)';
+    var degraded=API.sources&&API.sources.caps!=='东方财富';
+    if(stale){ $('stState').textContent='数据可能过期'; $('stState').style.color='var(--rose)'; }
+    else if(degraded){ $('stState').textContent='降级运行'; $('stState').style.color='var(--amber)'; }
+    else { $('stState').textContent='运行中'; $('stState').style.color='var(--green)'; }
   }
 
   function renderConfig(){
