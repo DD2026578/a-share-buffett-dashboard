@@ -354,6 +354,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
     <div class="fig" id="idxDetail" style="margin-top:14px;display:none">
       <div class="fig-head"><figcaption id="detailName">--</figcaption><span class="d" id="detailMeta"></span></div>
       <div class="chart-box" id="detailChart" style="height:300px"></div>
+      <div class="fig-head" id="peHead" style="margin-top:14px;display:none"><figcaption>估值通道 · 10 年 PE</figcaption><span class="d" id="peMeta"></span></div>
+      <div class="chart-box" id="peChart" style="height:230px;display:none"></div>
       <div class="four" id="detailStats" style="margin-top:12px"></div>
     </div>
   </section>
@@ -396,7 +398,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
   }
   var D = window.BUFFETT_DATA || null;
   var API = null;
-  var charts = { main:null, intra:null, idx:null, detail:null, wide:null };
+  var charts = { main:null, intra:null, idx:null, detail:null, wide:null, pe:null };
   var rangeMonths = 0;
   var metric = 'ratio';
   var lastAlertId = 0;
@@ -750,7 +752,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
         xAxis:{type:'category',data:dates,axisLabel:{color:P.axis,fontSize:10,interval:Math.max(0,Math.floor(dates.length/8))},axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false}},
         yAxis:{type:'value',scale:true,name:'归一化',nameTextStyle:{color:P.mut,fontSize:10},axisLabel:{color:P.axis,fontSize:10},splitLine:{lineStyle:{color:P.grid}}},
         series:series};
-      $('idxCaption').textContent='多指数走势对比（归一化，起点=100）';
+      $('idxCaption').textContent='近10年多指数走势（归一化，起点=100）';
     }else if(idxView==='risk'){
       var data=IDX.indices.map(function(x,i){
         return {name:x.name,value:[x.vol60,x.ret['60']||0,x.valuation?x.valuation.pe_pct:50],
@@ -791,10 +793,10 @@ body.simple #idxView button[data-view="corr"]{display:none}
     idxSelected=code;
     $('idxDetail').style.display='block';
     $('detailName').textContent=it.name+' · '+it.code.toUpperCase();
-    $('detailMeta').textContent=it.date+' 收盘 '+fmt(it.close,2)+'（'+pctText(it.pct)+'）';
+    $('detailMeta').textContent=it.date+' 收盘 '+fmt(it.close,2)+'（'+pctText(it.pct)+'） · 10年 '+pctText(it.ret10y);
     var simpleCards=[
       ['近1月',pctText(it.ret['20']),pctCls(it.ret['20'])],
-      ['近1年',pctText(it.ret['250']),pctCls(it.ret['250'])],
+      ['10年收益',pctText(it.ret10y),pctCls(it.ret10y)],
       ['贵不贵',valText(it.valuation),''],
       ['综合评分',fmt(it.score,1),'']
     ];
@@ -802,6 +804,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
       ['近1月',pctText(it.ret['20']),pctCls(it.ret['20'])],
       ['近3月',pctText(it.ret['60']),pctCls(it.ret['60'])],
       ['近1年',pctText(it.ret['250']),pctCls(it.ret['250'])],
+      ['10年收益',pctText(it.ret10y),pctCls(it.ret10y)],
       ['贵不贵',valText(it.valuation),''],
       ['RSI(14)',it.rsi==null?'—':it.rsi,it.rsi>=70?'up':(it.rsi<=30?'down':'')],
       ['60日波动',fmt(it.vol60,1)+'%',''],
@@ -822,10 +825,44 @@ body.simple #idxView button[data-view="corr"]{display:none}
         xAxis:{type:'category',data:it.dates,axisLabel:{color:P.axis,fontSize:10,interval:Math.max(0,Math.floor(it.dates.length/8))},axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false}},
         yAxis:{type:'value',scale:true,axisLabel:{color:P.axis,fontSize:10},splitLine:{lineStyle:{color:P.grid}}},
         series:[
-          {name:'收盘',type:'line',data:it.series,symbol:'none',lineStyle:{width:1.8,color:P.line},itemStyle:{color:P.line}},
-          {name:'MA20',type:'line',data:maSeries(it.series,20),symbol:'none',lineStyle:{width:1.2,color:P.index,opacity:.8}},
-          {name:'MA60',type:'line',data:maSeries(it.series,60),symbol:'none',lineStyle:{width:1.2,color:P.mut}}
+          {name:'收盘',type:'line',data:it.series,symbol:'none',lineStyle:{width:1.8,color:P.line},itemStyle:{color:P.line},sampling:'lttb'},
+          {name:'MA20',type:'line',data:it.ma20s||maSeries(it.series,20),symbol:'none',lineStyle:{width:1.2,color:P.index,opacity:.8}},
+          {name:'MA60',type:'line',data:it.ma60s||maSeries(it.series,60),symbol:'none',lineStyle:{width:1.2,color:P.mut}}
         ]},true);
+    }
+    var v=it.valuation;
+    var peHead=$('peHead'), peBox=$('peChart');
+    if(v&&v.pe_hist&&v.pe_hist.pe&&v.pe_low!=null&&window.echarts){
+      peHead.style.display='flex'; peBox.style.display='block';
+      $('peMeta').textContent='当前 PE '+v.pe+' · 低估 '+v.pe_low+' · 中轴 '+v.pe_mid+' · 高估 '+v.pe_high+'（10年分位20/50/80）';
+      if(!charts.pe) charts.pe=echarts.init(peBox,null,{renderer:'canvas'});
+      var Q=palette();
+      var pes=v.pe_hist.pe, maxPe=Math.max.apply(null,pes)*1.05;
+      charts.pe.setOption({
+        backgroundColor:'transparent',animationDuration:200,
+        tooltip:{trigger:'axis',backgroundColor:Q.bg,borderColor:Q.grid,textStyle:{color:Q.text,fontSize:11}},
+        grid:{left:44,right:18,top:16,bottom:28},
+        xAxis:{type:'category',data:v.pe_hist.dates,axisLabel:{color:Q.axis,fontSize:9,interval:Math.max(0,Math.floor(v.pe_hist.dates.length/8))},axisLine:{lineStyle:{color:Q.grid}},axisTick:{show:false}},
+        yAxis:{type:'value',scale:true,axisLabel:{color:Q.axis,fontSize:9},splitLine:{lineStyle:{color:Q.grid}}},
+        series:[{name:'PE',type:'line',data:pes,symbol:'none',lineStyle:{width:1.8,color:Q.line},
+          markLine:{silent:true,symbol:'none',label:{color:Q.mut,fontSize:9,position:'insideEndTop'},
+            data:[
+              {yAxis:v.pe_low,name:'低估 '+v.pe_low,lineStyle:{color:'#047857'}},
+              {yAxis:v.pe_mid,name:'中轴 '+v.pe_mid,lineStyle:{color:'#64748b'}},
+              {yAxis:v.pe_high,name:'高估 '+v.pe_high,lineStyle:{color:'#dc2626'}}
+            ]},
+          markArea:{silent:true,data:[
+            [{yAxis:0,itemStyle:{color:'rgba(4,120,87,.08)'}},{yAxis:v.pe_low}],
+            [{yAxis:v.pe_low,itemStyle:{color:'rgba(15,118,110,.06)'}},{yAxis:v.pe_mid}],
+            [{yAxis:v.pe_mid,itemStyle:{color:'rgba(100,116,139,.04)'}},{yAxis:v.pe_high}],
+            [{yAxis:v.pe_high,itemStyle:{color:'rgba(220,38,38,.07)'}},{yAxis:maxPe}]
+          ]},
+          markPoint:{symbol:'circle',symbolSize:8,itemStyle:{color:Q.line,borderColor:Q.bg,borderWidth:2},
+            label:{show:true,position:'top',color:Q.line,fontSize:10,formatter:function(){return v.pe;}},
+            data:[{coord:[v.pe_hist.dates.length-1,pes[pes.length-1]]}]}}]
+      },true);
+    }else{
+      peHead.style.display='none'; peBox.style.display='none';
     }
     renderIdxTable();
   }
@@ -1038,6 +1075,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
     if(charts.idx) charts.idx.resize();
     if(charts.detail) charts.detail.resize();
     if(charts.wide) charts.wide.resize();
+    if(charts.pe) charts.pe.resize();
   });
   document.querySelectorAll('#idxView button').forEach(function(b){
     b.addEventListener('click',function(){
@@ -1048,7 +1086,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   document.querySelectorAll('.help-btn').forEach(function(b){
     b.addEventListener('click',function(e){
       e.stopPropagation();
-      var box=b.nextElementSibling;
+      var h=b.closest('h2')||b.parentElement;
+      var box=h?h.nextElementSibling:null;
       if(!box||!box.classList.contains('help-box')) return;
       var on=box.classList.contains('on');
       document.querySelectorAll('.help-box').forEach(function(x){x.classList.remove('on');});
