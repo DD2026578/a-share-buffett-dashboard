@@ -319,9 +319,10 @@ body.simple #idxView button[data-view="corr"]{display:none}
 
   <section id="sec-indices">
     <h2><span class="num">09</span>指数全景<button class="help-btn" type="button">?</button></h2>
-    <div class="help-box">把 14 个指数放在一起比：涨得多不多、贵不贵、稳不稳。PE/PB 来自蛋卷；上证 PE 用上交所官方、PB 按沪市前 300 只估算；北证50 按市值前 50 估算。评分是综合排名，不是买卖建议。</div>
+    <div class="help-box">把 14 个指数放在一起比：涨得多不多、贵不贵、稳不稳。PE/PB 来自蛋卷；上证 PE 用上交所官方、PB 按沪市前 300 只估算；北证50 按市值前 50 估算。综合评分 = 40% 趋势 + 30% 估值 + 30% 风险，分数越高只代表相对更优，不是买卖建议。</div>
     <p class="lede">先看三大指数，再看宽基梯队，最后看行业分组；点任意卡片可展开详情。</p>
     <div class="four" id="idxSummary"></div>
+    <div class="metric-note" style="margin-top:10px">评分 = 40% 趋势 + 30% 估值 + 30% 风险；趋势看近 1 月/近 3 月涨跌和均线排列，估值看 PE 历史分位，风险看波动与回撤。分数越高表示相对更强、更便宜、更稳，是 14 个指数的横向排名，不是买卖建议。</div>
 
     <h3 class="layer-title">三大指数 · 单独评估</h3>
     <div class="three" id="bigThree"></div>
@@ -349,7 +350,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
       </div>
       <div class="card table-scroll" style="padding:8px 12px;margin-top:14px">
         <table id="idxTable">
-          <thead><tr><th>指数</th><th class="num">最新</th><th class="num">今天</th><th class="num">近1月</th><th class="num pro-only">近3月</th><th class="num">近1年</th><th class="num simple-only">贵不贵</th><th class="num pro-only">PE分位</th><th class="num pro-only">波动</th><th class="num">评分</th><th>信号</th></tr></thead>
+          <thead><tr><th>指数</th><th class="num">最新</th><th class="num">今天</th><th class="num">近1月</th><th class="num pro-only">近3月</th><th class="num">近1年</th><th class="num simple-only">贵不贵</th><th class="num pro-only">PE分位</th><th class="num pro-only">波动</th><th class="num" title="综合评分 = 40% 趋势 + 30% 估值 + 30% 风险；分数越高表示相对更强、更便宜、更稳">评分</th><th>信号</th></tr></thead>
           <tbody><tr><td colspan="11" style="color:var(--faint)">加载中…</td></tr></tbody>
         </table>
       </div>
