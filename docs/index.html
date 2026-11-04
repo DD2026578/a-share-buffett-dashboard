@@ -97,6 +97,11 @@ thead th{background:var(--line2);color:var(--mut);font-size:11px;letter-spacing:
 tbody td{padding:9px 12px;border-bottom:1px solid var(--line2)}
 tbody tr:last-child td{border-bottom:0}
 tbody tr.current{background:var(--blue-soft)}
+tbody tr{cursor:pointer}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.up{color:var(--rose)}
+.down{color:var(--green)}
+.sig{display:inline-block;font-size:10px;padding:1px 7px;border-radius:999px;background:var(--line2);color:var(--ink2);margin:1px 2px 1px 0;white-space:nowrap}
 .mono{font-variant-numeric:tabular-nums}
 input.f,select.f{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font-size:12.5px;font-family:inherit;background:var(--card);color:var(--ink);outline:none}
 input.f:focus,select.f:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
@@ -288,6 +293,34 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
+  <section id="sec-indices">
+    <h2><span class="num">09</span>指数全景</h2>
+    <p class="lede">14 个主流指数的多维体检：区间收益、均线、RSI / MACD / BOLL、波动与回撤、估值分位、相对强弱与相关性。综合评分 = 40% 趋势 + 30% 估值 + 30% 风险；Beta 与相关性为近 120 日相对沪深300。</p>
+    <div class="four" id="idxSummary"></div>
+    <div class="fig" style="margin-top:14px">
+      <div class="fig-head">
+        <figcaption id="idxCaption">多指数走势对比（归一化，起点=100）</figcaption>
+        <div class="seg" id="idxView">
+          <button data-view="trend" class="on">走势对比</button>
+          <button data-view="risk">风险收益</button>
+          <button data-view="corr">相关性</button>
+        </div>
+      </div>
+      <div class="chart-box" id="idxChart" style="height:400px"></div>
+    </div>
+    <div class="card table-scroll" style="padding:8px 12px;margin-top:14px">
+      <table id="idxTable">
+        <thead><tr><th>指数</th><th class="num">最新</th><th class="num">1D</th><th class="num">20D</th><th class="num">60D</th><th class="num">250D</th><th class="num">PE分位</th><th class="num">波动</th><th class="num">评分</th><th>信号</th></tr></thead>
+        <tbody><tr><td colspan="10" style="color:var(--faint)">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="fig" id="idxDetail" style="margin-top:14px;display:none">
+      <div class="fig-head"><figcaption id="detailName">--</figcaption><span class="d" id="detailMeta"></span></div>
+      <div class="chart-box" id="detailChart" style="height:300px"></div>
+      <div class="four" id="detailStats" style="margin-top:12px"></div>
+    </div>
+  </section>
+
   <section id="sec-status">
     <div class="four">
       <div class="stat"><div class="k">最后更新</div><div class="v sm" id="stUpdated">--</div><div class="d">Asia/Shanghai</div></div>
@@ -310,6 +343,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
 <div class="toast" id="toast"></div>
 
 <script src="echarts.min.js" onerror="window.__echartsLocalFailed=true"></script>
+<script src="indices.js" onerror="window.__idxMissing=true"></script>
 <script src="data.js"></script>
 <script>
 (function(){
@@ -325,7 +359,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   }
   var D = window.BUFFETT_DATA || null;
   var API = null;
-  var charts = { main:null, intra:null };
+  var charts = { main:null, intra:null, idx:null, detail:null };
   var rangeMonths = 0;
   var metric = 'ratio';
   var lastAlertId = 0;
@@ -490,6 +524,159 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     if(stale){ $('stState').textContent='数据可能过期'; $('stState').style.color='var(--rose)'; }
     else if(degraded){ $('stState').textContent='降级运行'; $('stState').style.color='var(--amber)'; }
     else { $('stState').textContent='运行中'; $('stState').style.color='var(--green)'; }
+  }
+
+  // ---------- 指数全景 ----------
+  var IDX = window.INDEX_DATA || null;
+  var idxView = 'trend';
+  var idxSelected = null;
+  var idxPalette = ['#2563eb','#b45309','#047857','#dc2626','#7c3aed','#0891b2','#ca8a04','#be185d','#15803d','#4f46e5','#0f766e','#a16207','#9f1239','#475569'];
+
+  function pctText(v){ return v==null?'—':(v>=0?'+':'')+v.toFixed(2)+'%'; }
+  function pctCls(v){ return v>=0?'up':'down'; }
+  function idxOf(code){ return IDX?IDX.indices.filter(function(x){return x.code===code;})[0]:null; }
+
+  function renderIdxSummary(){
+    if(!IDX) return;
+    var items=IDX.indices.slice();
+    var withRet=items.filter(function(x){return x.ret['20']!=null;});
+    var best=withRet.reduce(function(a,b){return b.ret['20']>a.ret['20']?b:a;},withRet[0]);
+    var worst=withRet.reduce(function(a,b){return b.ret['20']<a.ret['20']?b:a;},withRet[0]);
+    var withVal=items.filter(function(x){return x.valuation&&x.valuation.pe_pct!=null;});
+    var cheap=withVal.length?withVal.reduce(function(a,b){return b.valuation.pe_pct<a.valuation.pe_pct?b:a;},withVal[0]):null;
+    var top=items.reduce(function(a,b){return b.score>a.score?b:a;},items[0]);
+    $('idxSummary').innerHTML=
+      '<div class="stat"><div class="k">20日最强</div><div class="v sm">'+best.name+'</div><div class="d '+pctCls(best.ret['20'])+'">'+pctText(best.ret['20'])+'</div></div>'+
+      '<div class="stat"><div class="k">20日最弱</div><div class="v sm">'+worst.name+'</div><div class="d '+pctCls(worst.ret['20'])+'">'+pctText(worst.ret['20'])+'</div></div>'+
+      '<div class="stat"><div class="k">估值分位最低</div><div class="v sm">'+(cheap?cheap.name:'—')+'</div><div class="d">'+(cheap?'PE 分位 '+cheap.valuation.pe_pct+'%':'无估值数据')+'</div></div>'+
+      '<div class="stat"><div class="k">综合评分最高</div><div class="v sm">'+top.name+'</div><div class="d">评分 '+top.score+'</div></div>';
+  }
+
+  function renderIdxTable(){
+    if(!IDX) return;
+    var items=IDX.indices.slice().sort(function(a,b){ return b.score-a.score; });
+    $('idxTable').querySelector('tbody').innerHTML=items.map(function(x){
+      var sel=(idxSelected===x.code)?' style="background:var(--blue-soft)"':'';
+      return '<tr data-code="'+x.code+'"'+sel+'>'+
+        '<td><b>'+x.name+'</b><div class="d" style="font-size:10px;color:var(--faint)">'+x.code.toUpperCase()+'</div></td>'+
+        '<td class="num">'+fmt(x.close,2)+'</td>'+
+        '<td class="num '+pctCls(x.pct)+'">'+pctText(x.pct)+'</td>'+
+        '<td class="num '+pctCls(x.ret['20'])+'">'+pctText(x.ret['20'])+'</td>'+
+        '<td class="num '+pctCls(x.ret['60'])+'">'+pctText(x.ret['60'])+'</td>'+
+        '<td class="num '+pctCls(x.ret['250'])+'">'+pctText(x.ret['250'])+'</td>'+
+        '<td class="num">'+(x.valuation?x.valuation.pe_pct+'%':'—')+'</td>'+
+        '<td class="num">'+fmt(x.vol60,1)+'%</td>'+
+        '<td class="num"><b>'+fmt(x.score,1)+'</b></td>'+
+        '<td>'+(x.signals.length?x.signals.map(function(s){return '<span class="sig">'+s+'</span>';}).join(''):'—')+'</td>'+
+      '</tr>';
+    }).join('');
+    Array.prototype.forEach.call($('idxTable').querySelectorAll('tbody tr[data-code]'),function(tr){
+      tr.addEventListener('click',function(){ showIdxDetail(tr.getAttribute('data-code')); });
+    });
+  }
+
+  function drawIdxChart(){
+    if(!IDX || !window.echarts) return;
+    var el=$('idxChart'); if(!el) return;
+    if(!charts.idx) charts.idx=echarts.init(el,null,{renderer:'canvas'});
+    var P=palette(), opt;
+    if(idxView==='trend'){
+      var dates=IDX.norm.dates;
+      var series=IDX.indices.map(function(x,i){
+        return {name:x.name,type:'line',data:IDX.norm.series[x.code]||[],showSymbol:false,
+          lineStyle:{width:1.4,color:idxPalette[i%idxPalette.length]},
+          itemStyle:{color:idxPalette[i%idxPalette.length]},emphasis:{focus:'series'}};
+      });
+      opt={backgroundColor:'transparent',animationDuration:250,
+        tooltip:{trigger:'axis',backgroundColor:P.bg,borderColor:P.grid,textStyle:{color:P.text,fontSize:11},
+          valueFormatter:function(v){return v==null?'—':fmt(v,1);}},
+        legend:{type:'scroll',top:0,textStyle:{color:P.mut,fontSize:10},itemWidth:14,itemHeight:8},
+        grid:{left:48,right:20,top:46,bottom:36},
+        xAxis:{type:'category',data:dates,axisLabel:{color:P.axis,fontSize:10,interval:Math.max(0,Math.floor(dates.length/8))},axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false}},
+        yAxis:{type:'value',scale:true,name:'归一化',nameTextStyle:{color:P.mut,fontSize:10},axisLabel:{color:P.axis,fontSize:10},splitLine:{lineStyle:{color:P.grid}}},
+        series:series};
+      $('idxCaption').textContent='多指数走势对比（归一化，起点=100）';
+    }else if(idxView==='risk'){
+      var data=IDX.indices.map(function(x,i){
+        return {name:x.name,value:[x.vol60,x.ret['60']||0,x.valuation?x.valuation.pe_pct:50],
+          itemStyle:{color:idxPalette[i%idxPalette.length]}};
+      });
+      opt={backgroundColor:'transparent',animationDuration:250,
+        tooltip:{formatter:function(p){var v=p.value;return '<b>'+p.name+'</b><br/>60日波动：'+fmt(v[0],1)+'%<br/>60日收益：'+fmt(v[1],2)+'%<br/>PE分位：'+(v[2]!=null?fmt(v[2],1)+'%':'—');},backgroundColor:P.bg,borderColor:P.grid,textStyle:{color:P.text,fontSize:12}},
+        grid:{left:60,right:40,top:30,bottom:46},
+        xAxis:{type:'value',name:'60日波动率 %',nameTextStyle:{color:P.mut,fontSize:10},axisLabel:{color:P.axis,fontSize:10},splitLine:{lineStyle:{color:P.grid}}},
+        yAxis:{type:'value',name:'60日收益 %',nameTextStyle:{color:P.mut,fontSize:10},axisLabel:{color:P.axis,fontSize:10},splitLine:{lineStyle:{color:P.grid}}},
+        series:[{type:'scatter',data:data,symbolSize:function(v){return 8+(v[2]||50)/100*12;},
+          label:{show:true,position:'top',formatter:function(p){return p.name;},color:P.text,fontSize:10},emphasis:{scale:1.3}}]};
+      $('idxCaption').textContent='风险收益分布（气泡大小 = PE 分位）';
+    }else{
+      var labels=IDX.corr.labels,m=IDX.corr.matrix,hdata=[];
+      for(var i=0;i<m.length;i++) for(var j=0;j<m[i].length;j++) hdata.push([j,i,m[i][j]]);
+      opt={backgroundColor:'transparent',animationDuration:200,
+        tooltip:{formatter:function(p){return labels[p.value[1]]+' × '+labels[p.value[0]]+'：'+p.value[2].toFixed(2);},backgroundColor:P.bg,borderColor:P.grid,textStyle:{color:P.text,fontSize:12}},
+        grid:{left:100,right:24,top:24,bottom:70},
+        xAxis:{type:'category',data:labels,axisLabel:{color:P.axis,fontSize:9,rotate:45},splitArea:{show:false}},
+        yAxis:{type:'category',data:labels,axisLabel:{color:P.axis,fontSize:9}},
+        visualMap:{min:0,max:1,calculable:true,orient:'horizontal',left:'center',bottom:6,itemWidth:10,itemHeight:60,textStyle:{color:P.mut,fontSize:10},
+          inRange:{color:['#eef2f8', theme==='dark'?'#2a4a7a':'#9ec1ff','#2563eb']}},
+        series:[{type:'heatmap',data:hdata,label:{show:false},emphasis:{itemStyle:{borderColor:P.text,borderWidth:1}}}]};
+      $('idxCaption').textContent='60 日收益率相关性矩阵';
+    }
+    charts.idx.setOption(opt,true);
+  }
+
+  function maSeries(arr,n){
+    var out=[],sum=0;
+    for(var i=0;i<arr.length;i++){ sum+=arr[i]; if(i>=n) sum-=arr[i-n]; out.push(i>=n-1?+(sum/n).toFixed(2):null); }
+    return out;
+  }
+
+  function showIdxDetail(code){
+    var it=idxOf(code); if(!it) return;
+    idxSelected=code;
+    $('idxDetail').style.display='block';
+    $('detailName').textContent=it.name+' · '+it.code.toUpperCase();
+    $('detailMeta').textContent=it.date+' 收盘 '+fmt(it.close,2)+'（'+pctText(it.pct)+'）';
+    var cards=[
+      ['20日收益',pctText(it.ret['20']),pctCls(it.ret['20'])],
+      ['60日收益',pctText(it.ret['60']),pctCls(it.ret['60'])],
+      ['250日收益',pctText(it.ret['250']),pctCls(it.ret['250'])],
+      ['RSI(14)',it.rsi==null?'—':it.rsi,it.rsi>=70?'up':(it.rsi<=30?'down':'')],
+      ['60日波动',fmt(it.vol60,1)+'%',''],
+      ['最大回撤',fmt(it.mdd,1)+'%','down'],
+      ['Beta/相关(120D)',(it.beta==null?'—':it.beta)+' / '+(it.corr==null?'—':it.corr),''],
+      ['PE分位',it.valuation?it.valuation.pe_pct+'%':'—','']
+    ];
+    $('detailStats').innerHTML=cards.map(function(c){
+      return '<div class="stat"><div class="k">'+c[0]+'</div><div class="v '+c[2]+'">'+c[1]+'</div></div>';
+    }).join('');
+    if(window.echarts){
+      if(!charts.detail) charts.detail=echarts.init($('detailChart'),null,{renderer:'canvas'});
+      var P=palette();
+      charts.detail.setOption({backgroundColor:'transparent',animationDuration:200,
+        tooltip:{trigger:'axis',backgroundColor:P.bg,borderColor:P.grid,textStyle:{color:P.text,fontSize:11}},
+        legend:{top:0,textStyle:{color:P.mut,fontSize:10},itemWidth:14,itemHeight:8},
+        grid:{left:56,right:20,top:34,bottom:30},
+        xAxis:{type:'category',data:it.dates,axisLabel:{color:P.axis,fontSize:10,interval:Math.max(0,Math.floor(it.dates.length/8))},axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false}},
+        yAxis:{type:'value',scale:true,axisLabel:{color:P.axis,fontSize:10},splitLine:{lineStyle:{color:P.grid}}},
+        series:[
+          {name:'收盘',type:'line',data:it.series,symbol:'none',lineStyle:{width:1.8,color:P.line},itemStyle:{color:P.line}},
+          {name:'MA20',type:'line',data:maSeries(it.series,20),symbol:'none',lineStyle:{width:1.2,color:P.index,opacity:.8}},
+          {name:'MA60',type:'line',data:maSeries(it.series,60),symbol:'none',lineStyle:{width:1.2,color:P.mut}}
+        ]},true);
+    }
+    renderIdxTable();
+  }
+
+  function renderIndices(){ renderIdxSummary(); renderIdxTable(); drawIdxChart(); if(idxSelected) showIdxDetail(idxSelected); }
+
+  function pollIndices(){
+    fetch('api/indices?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+      if(d && d.indices && d.indices.length){ IDX=d; renderIndices(); }
+      else if(!IDX && window.INDEX_DATA){ IDX=window.INDEX_DATA; renderIndices(); }
+    }).catch(function(){
+      if(!IDX && window.INDEX_DATA){ IDX=window.INDEX_DATA; renderIndices(); }
+    });
   }
 
   function renderConfig(){
@@ -662,6 +849,14 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   window.addEventListener('resize',function(){
     if(charts.main) charts.main.resize();
     if(charts.intra) charts.intra.resize();
+    if(charts.idx) charts.idx.resize();
+    if(charts.detail) charts.detail.resize();
+  });
+  document.querySelectorAll('#idxView button').forEach(function(b){
+    b.addEventListener('click',function(){
+      document.querySelectorAll('#idxView button').forEach(function(x){x.classList.remove('on');});
+      b.classList.add('on'); idxView=b.dataset.view; drawIdxChart();
+    });
   });
   document.querySelectorAll('#segRange button').forEach(function(b){
     b.addEventListener('click',function(){
@@ -676,7 +871,8 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     });
   });
   $('themeBtn').addEventListener('click',function(){
-    theme=theme==='dark'?'light':'dark'; localStorage.setItem('buffett-theme',theme); initTheme(); drawMain(); drawIntra();
+    theme=theme==='dark'?'light':'dark'; localStorage.setItem('buffett-theme',theme); initTheme();
+    drawMain(); drawIntra(); drawIdxChart(); if(idxSelected) showIdxDetail(idxSelected);
   });
   $('btnPng').addEventListener('click',function(){
     if(!charts.main) return;
@@ -710,8 +906,11 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   if(!D){ $('heroVal').textContent='--'; toast('data.js 未加载'); return; }
   ensureEcharts(function(){
     applyData();
+    renderIndices();
     poll();
+    pollIndices();
     setInterval(poll,30000);
+    setInterval(pollIndices,60000);
   });
 })();
 </script>
