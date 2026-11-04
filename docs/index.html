@@ -136,6 +136,14 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
 body.simple .pro-only{display:none!important}
 body:not(.simple) .simple-only{display:none!important}
 body.simple #idxView button[data-view="corr"]{display:none}
+.help-btn{width:19px;height:19px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--mut);font-size:11px;font-weight:700;cursor:pointer;line-height:1;padding:0;margin-left:4px;vertical-align:middle}
+.help-btn:hover{border-color:var(--blue);color:var(--blue)}
+.help-box{display:none;margin:-4px 0 14px;padding:10px 14px;border-left:3px solid var(--blue);border-radius:0 10px 10px 0;background:var(--blue-soft);font-size:12.5px;color:var(--ink2);line-height:1.8}
+.help-box.on{display:block}
+.layer-title{font-size:14px;font-weight:700;color:var(--ink2);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+.layer-title:before{content:"";width:3px;height:14px;border-radius:2px;background:var(--blue)}
+.idx-card{transition:transform .15s ease,box-shadow .15s ease}
+.idx-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
 </style>
 </head>
 <body>
@@ -157,7 +165,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
 
 <div class="wrap">
   <section id="sec-kpi">
-    <h2><span class="num">01</span>当前读数</h2>
+    <h2><span class="num">01</span>当前读数<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">这个百分比 = A股总市值 ÷ 上一年 GDP。数值越高，说明股票整体越贵；越低越便宜。</div>
     <p class="lede">口径：总市值 = 上证指数 + 深证综指（东方财富 f20）；880001 等价值 = 总市值 × 100；分母为前一年度 GDP。</p>
     <div class="kpis">
       <div class="kpi"><div class="t">A股总市值</div><div class="v" id="kMv">--</div><div class="d" id="kMvD">沪 / 深 / 北交所</div></div>
@@ -181,7 +190,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-trend">
-    <h2><span class="num">02</span>15 年走势</h2>
+    <h2><span class="num">02</span>15 年走势<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">蓝线是每个月的“贵不贵”读数；浅蓝带是近 5 年的正常波动范围；红色虚线是偏贵/偏便宜的界线。</div>
     <p class="lede">月度证券化率与滚动均值 ±1σ 带。可切换指标、缩放区间，悬停查看每月明细。</p>
     <div class="fig">
       <div class="fig-head">
@@ -198,7 +208,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-intraday">
-    <h2><span class="num">03</span>当日实时</h2>
+    <h2><span class="num">03</span>当日实时<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">服务每 30 秒记录一次读数，展示今天盘中的变化。非交易时段是一条直线，属正常现象。</div>
     <p class="lede">服务运行期间每 30 秒记录一个快照，展示今天的读数变化。</p>
     <div class="two">
       <div class="fig">
@@ -215,7 +226,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-valuation" class="pro-only">
-    <h2><span class="num">04</span>估值组合</h2>
+    <h2><span class="num">04</span>估值组合<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">PE 是股价相对公司盈利的倍数，历史分位越低越便宜；ERP 是股票相对国债的性价比，越高越划算。</div>
     <p class="lede">单看市值/GDP 容易误判，配合 PE、PB 分位与股债性价比交叉验证。</p>
     <div class="three">
       <div class="stat" id="valHs300">
@@ -236,7 +248,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-market">
-    <h2><span class="num">05</span>市场确认</h2>
+    <h2><span class="num">05</span>市场确认<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">成交额代表资金活跃度，涨停/跌停代表情绪。成交额放大、涨停多，通常说明资金在进场。</div>
     <p class="lede">估值告诉你“贵不贵”，资金与情绪告诉你“撑不撑得住”。</p>
     <div class="four">
       <div class="stat"><div class="k">两市成交额</div><div class="v" id="mAmount">--</div><div class="d">沪 + 深，单位万亿元</div></div>
@@ -257,7 +270,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-alert" class="pro-only">
-    <h2><span class="num">07</span>阈值预警</h2>
+    <h2><span class="num">07</span>阈值预警<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">读数穿过界线时提醒你。可以自己设界线，也可以让它按近 5 年的平均值自动调整。</div>
     <p class="lede">读数穿越阈值时记录提醒；开启浏览器通知后，页面在后台也能收到。</p>
     <div class="two">
       <div class="card">
@@ -286,7 +300,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-method" class="pro-only">
-    <h2><span class="num">08</span>口径与敏感性</h2>
+    <h2><span class="num">08</span>口径与敏感性<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">说明数据怎么算、有哪些口径差异，避免把不同市场的数字直接对比。</div>
     <div class="bul">
       <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.9;color:var(--ink2)">
         <li><b>总市值口径：</b>上证指数 + 深证综指；北交所单列不计入主读数，占比约 <span id="methodBj">0.75%</span>。</li>
@@ -299,26 +314,43 @@ body.simple #idxView button[data-view="corr"]{display:none}
   </section>
 
   <section id="sec-indices">
-    <h2><span class="num">09</span>指数全景</h2>
-    <p class="lede">14 个主流指数的多维体检：区间收益、均线、RSI / MACD / BOLL、波动与回撤、估值分位、相对强弱与相关性。综合评分 = 40% 趋势 + 30% 估值 + 30% 风险；Beta 与相关性为近 120 日相对沪深300。</p>
+    <h2><span class="num">09</span>指数全景<button class="help-btn" type="button">?</button></h2>
+    <div class="help-box">把 14 个指数放在一起比：涨得多不多、贵不贵、稳不稳。评分是综合排名，不是买卖建议。</div>
+    <p class="lede">先看三大指数，再看宽基梯队，最后看行业分组；点任意卡片可展开详情。</p>
     <div class="four" id="idxSummary"></div>
-    <div class="fig" style="margin-top:14px">
-      <div class="fig-head">
-        <figcaption id="idxCaption">多指数走势对比（归一化，起点=100）</figcaption>
-        <div class="seg" id="idxView">
-          <button data-view="trend" class="on">走势对比</button>
-          <button data-view="risk">风险收益</button>
-          <button data-view="corr">相关性</button>
+
+    <h3 class="layer-title">三大指数 · 单独评估</h3>
+    <div class="three" id="bigThree"></div>
+
+    <h3 class="layer-title">宽基梯队 · 一起对比</h3>
+    <div class="fig" style="padding:16px 16px 8px">
+      <div class="fig-head"><figcaption>按近 1 月收益排序（括号内为综合评分）</figcaption></div>
+      <div class="chart-box" id="wideChart" style="height:270px"></div>
+    </div>
+
+    <h3 class="layer-title">行业风格 · 分组评估</h3>
+    <div class="three" id="industryGroups"></div>
+
+    <div class="pro-only" style="margin-top:14px">
+      <div class="fig">
+        <div class="fig-head">
+          <figcaption id="idxCaption">多指数走势对比（归一化，起点=100）</figcaption>
+          <div class="seg" id="idxView">
+            <button data-view="trend" class="on">走势对比</button>
+            <button data-view="risk">风险收益</button>
+            <button data-view="corr">相关性</button>
+          </div>
         </div>
+        <div class="chart-box" id="idxChart" style="height:400px"></div>
       </div>
-      <div class="chart-box" id="idxChart" style="height:400px"></div>
+      <div class="card table-scroll" style="padding:8px 12px;margin-top:14px">
+        <table id="idxTable">
+          <thead><tr><th>指数</th><th class="num">最新</th><th class="num">今天</th><th class="num">近1月</th><th class="num pro-only">近3月</th><th class="num">近1年</th><th class="num simple-only">贵不贵</th><th class="num pro-only">PE分位</th><th class="num pro-only">波动</th><th class="num">评分</th><th>信号</th></tr></thead>
+          <tbody><tr><td colspan="11" style="color:var(--faint)">加载中…</td></tr></tbody>
+        </table>
+      </div>
     </div>
-    <div class="card table-scroll" style="padding:8px 12px;margin-top:14px">
-      <table id="idxTable">
-        <thead><tr><th>指数</th><th class="num">最新</th><th class="num">今天</th><th class="num">近1月</th><th class="num pro-only">近3月</th><th class="num">近1年</th><th class="num simple-only">贵不贵</th><th class="num pro-only">PE分位</th><th class="num pro-only">波动</th><th class="num">评分</th><th>信号</th></tr></thead>
-        <tbody><tr><td colspan="11" style="color:var(--faint)">加载中…</td></tr></tbody>
-      </table>
-    </div>
+
     <div class="fig" id="idxDetail" style="margin-top:14px;display:none">
       <div class="fig-head"><figcaption id="detailName">--</figcaption><span class="d" id="detailMeta"></span></div>
       <div class="chart-box" id="detailChart" style="height:300px"></div>
@@ -364,7 +396,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
   }
   var D = window.BUFFETT_DATA || null;
   var API = null;
-  var charts = { main:null, intra:null, idx:null, detail:null };
+  var charts = { main:null, intra:null, idx:null, detail:null, wide:null };
   var rangeMonths = 0;
   var metric = 'ratio';
   var lastAlertId = 0;
@@ -548,6 +580,102 @@ body.simple #idxView button[data-view="corr"]{display:none}
   }
   function idxOf(code){ return IDX?IDX.indices.filter(function(x){return x.code===code;})[0]:null; }
 
+  var BIG3=['sh000001','sz399001','sz399006'];
+  var WIDE=['sh000300','sh000905','sh000852','sh000688','bj899050'];
+  var GROUPS=[
+    {name:'红利防御',codes:['sh000922','sz399986']},
+    {name:'大消费',codes:['sh000932','sz399997','sh000991']},
+    {name:'金融弹性',codes:['sz399975']}
+  ];
+
+  function trendTag(it){
+    var a=it.ma['20']||0, b=it.ma['60']||0;
+    if(it.close>a && a>b) return ['趋势偏强','deep'];
+    if(it.close<a && a<b) return ['趋势偏弱','high'];
+    return ['震荡整理','mid'];
+  }
+  function valTag(it){
+    if(!it.valuation||it.valuation.pe_pct==null) return ['估值暂无','mid'];
+    var p=it.valuation.pe_pct;
+    return p<30?['估值便宜','deep']:p<70?['估值正常','mid']:['估值偏贵','high'];
+  }
+  function riskTag(it){ return it.vol60<20?['波动低','mid']:it.vol60<30?['波动中','mid']:['波动高','high']; }
+
+  function sparkSvg(series){
+    var arr=(series||[]).slice(-60);
+    if(arr.length<2) return '';
+    var mn=Math.min.apply(null,arr), mx=Math.max.apply(null,arr);
+    var w=200,h=44,span=(mx-mn)||1;
+    var pts=arr.map(function(v,i){return (i/(arr.length-1)*w).toFixed(1)+','+(h-(v-mn)/span*h).toFixed(1);}).join(' ');
+    var up=arr[arr.length-1]>=arr[0];
+    return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" style="width:100%;height:44px;display:block;margin:6px 0 2px"><polyline points="'+pts+'" fill="none" stroke="'+(up?'var(--rose)':'var(--green)')+'" stroke-width="1.6"/></svg>';
+  }
+
+  function bindIdxCards(id){
+    Array.prototype.forEach.call($(id).querySelectorAll('[data-code]'),function(el){
+      el.addEventListener('click',function(){ showIdxDetail(el.getAttribute('data-code')); });
+    });
+  }
+
+  function renderBigThree(){
+    if(!IDX) return;
+    $('bigThree').innerHTML=BIG3.map(function(code){
+      var it=idxOf(code); if(!it) return '';
+      var t=trendTag(it), v=valTag(it), r=riskTag(it);
+      return '<div class="stat idx-card" data-code="'+code+'" style="cursor:pointer">'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline"><div class="k">'+it.name+'</div><div class="'+pctCls(it.pct)+'" style="font-weight:700">'+pctText(it.pct)+'</div></div>'+
+        '<div class="v">'+fmt(it.close,2)+'</div>'+
+        sparkSvg(it.series)+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="tag '+t[1]+'">'+t[0]+'</span><span class="tag '+v[1]+'">'+v[0]+'</span><span class="tag '+r[1]+'">'+r[0]+'</span></div>'+
+        '<div class="d" style="margin-top:8px">'+(it.valuation?'PE 分位 '+it.valuation.pe_pct+'% · ':'')+'评分 '+fmt(it.score,1)+'</div>'+
+      '</div>';
+    }).join('');
+    bindIdxCards('bigThree');
+  }
+
+  function renderWide(){
+    if(!IDX || !window.echarts) return;
+    var el=$('wideChart'); if(!el) return;
+    var items=WIDE.map(idxOf).filter(Boolean);
+    items.sort(function(a,b){return (a.ret['20']||0)-(b.ret['20']||0);});
+    if(!charts.wide) charts.wide=echarts.init(el,null,{renderer:'canvas'});
+    var P=palette();
+    charts.wide.setOption({
+      backgroundColor:'transparent',animationDuration:250,
+      grid:{left:78,right:96,top:18,bottom:26},
+      tooltip:{trigger:'axis',axisPointer:{type:'shadow'},backgroundColor:P.bg,borderColor:P.grid,textStyle:{color:P.text,fontSize:12},
+        formatter:function(ps){var it=items[ps[0].dataIndex];return '<b>'+it.name+'</b><br/>近1月：'+pctText(it.ret['20'])+'<br/>近3月：'+pctText(it.ret['60'])+'<br/>评分：'+it.score;}},
+      xAxis:{type:'value',axisLabel:{color:P.axis,fontSize:10,formatter:'{value}%'},splitLine:{lineStyle:{color:P.grid}}},
+      yAxis:{type:'category',data:items.map(function(x){return x.name;}),axisLabel:{color:P.text,fontSize:11},axisLine:{lineStyle:{color:P.grid}},axisTick:{show:false}},
+      series:[{type:'bar',barWidth:14,
+        data:items.map(function(x){var v=x.ret['20']||0;return {value:v,itemStyle:{color:v>=0?'#dc2626':'#047857'}};}),
+        label:{show:true,position:'right',distance:6,formatter:function(p){var it=items[p.dataIndex];return pctText(it.ret['20'])+'（'+it.score+'）';},color:P.text,fontSize:10},
+        markLine:{silent:true,symbol:'none',lineStyle:{color:P.grid},data:[{xAxis:0}]}}]
+    },true);
+  }
+
+  function renderGroups(){
+    if(!IDX) return;
+    $('industryGroups').innerHTML=GROUPS.map(function(g){
+      var items=g.codes.map(idxOf).filter(Boolean);
+      if(!items.length) return '';
+      var avg=items.reduce(function(s,x){return s+x.score;},0)/items.length;
+      var best=items.reduce(function(a,b){return b.score>a.score?b:a;});
+      var worst=items.reduce(function(a,b){return b.score<a.score?b:a;});
+      var vals=items.filter(function(x){return x.valuation;});
+      var pe=vals.length?vals.reduce(function(s,x){return s+x.valuation.pe_pct;},0)/vals.length:null;
+      return '<div class="stat">'+
+        '<div class="k">'+g.name+' · '+items.length+' 个</div>'+
+        '<div class="v">'+fmt(avg,1)+' 分</div>'+
+        '<div class="d">最强 '+best.name+'（'+best.score+'） · 最弱 '+worst.name+'（'+worst.score+'）</div>'+
+        '<div class="d">组内平均 PE 分位：'+(pe!=null?fmt(pe,1)+'%':'—')+'</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">'+
+          items.map(function(x){return '<button class="btn btn-g" style="padding:4px 9px;font-size:11px" data-code="'+x.code+'">'+x.name+' '+fmt(x.score,0)+'</button>';}).join('')+
+        '</div></div>';
+    }).join('');
+    bindIdxCards('industryGroups');
+  }
+
   function renderIdxSummary(){
     if(!IDX) return;
     var items=IDX.indices.slice();
@@ -693,7 +821,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
     renderIdxTable();
   }
 
-  function renderIndices(){ renderIdxSummary(); renderIdxTable(); drawIdxChart(); if(idxSelected) showIdxDetail(idxSelected); }
+  function renderIndices(){ renderIdxSummary(); renderIdxTable(); renderBigThree(); renderWide(); renderGroups(); drawIdxChart(); if(idxSelected) showIdxDetail(idxSelected); }
 
   function pollIndices(){
     fetch('api/indices?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
@@ -900,11 +1028,22 @@ body.simple #idxView button[data-view="corr"]{display:none}
     if(charts.intra) charts.intra.resize();
     if(charts.idx) charts.idx.resize();
     if(charts.detail) charts.detail.resize();
+    if(charts.wide) charts.wide.resize();
   });
   document.querySelectorAll('#idxView button').forEach(function(b){
     b.addEventListener('click',function(){
       document.querySelectorAll('#idxView button').forEach(function(x){x.classList.remove('on');});
       b.classList.add('on'); idxView=b.dataset.view; drawIdxChart();
+    });
+  });
+  document.querySelectorAll('.help-btn').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var box=b.nextElementSibling;
+      if(!box||!box.classList.contains('help-box')) return;
+      var on=box.classList.contains('on');
+      document.querySelectorAll('.help-box').forEach(function(x){x.classList.remove('on');});
+      if(!on) box.classList.add('on');
     });
   });
   document.querySelectorAll('#segRange button').forEach(function(b){
@@ -921,7 +1060,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
   });
   $('themeBtn').addEventListener('click',function(){
     theme=theme==='dark'?'light':'dark'; localStorage.setItem('buffett-theme',theme); initTheme();
-    drawMain(); drawIntra(); drawIdxChart(); if(idxSelected) showIdxDetail(idxSelected);
+    drawMain(); drawIntra(); drawIdxChart(); renderWide(); if(idxSelected) showIdxDetail(idxSelected);
   });
   $('modeBtn').addEventListener('click',function(){
     mode=mode==='simple'?'pro':'simple';
