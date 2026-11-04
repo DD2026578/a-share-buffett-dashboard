@@ -307,7 +307,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
         <li><b>总市值口径：</b>上证指数 + 深证综指；北交所单列不计入主读数，占比约 <span id="methodBj">0.75%</span>。</li>
         <li><b>GDP 口径：</b>主读数用前一年度 GDP（滞后但稳定）；TTM 口径为 <span id="methodTtm">141.76</span> 万亿，读数为 <span id="methodTtmRatio">--</span>。</li>
         <li><b>阈值：</b>固定阈值来自 2011–2026 均值 ±20%；滚动模式用最近窗口均值 ±1σ，可在上方切换。</li>
-        <li><b>PE / PB：</b>沪深300、中证500，来自蛋卷指数估值；ERP 用沪深300 PE 与无风险利率计算。</li>
+        <li><b>PE / PB：</b>深证成指、创业板、科创50、沪深300、中证500、中证1000、红利、消费、医药、白酒、银行、证券来自蛋卷指数估值（含历史分位）；上证 PE 取上交所官方平均、PB 按沪市前 300 只市值加权估算；北证50 按市值前 50 估算。无历史分位的指数只显示 PE/PB，不做“贵/便宜”判断。</li>
         <li><b>局限性：</b>证券化率只反映市值/GDP，不等于盈利估值；A股与美股、港股不可直接横向比较。</li>
       </ul>
     </div>
@@ -315,7 +315,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
 
   <section id="sec-indices">
     <h2><span class="num">09</span>指数全景<button class="help-btn" type="button">?</button></h2>
-    <div class="help-box">把 14 个指数放在一起比：涨得多不多、贵不贵、稳不稳。评分是综合排名，不是买卖建议。</div>
+    <div class="help-box">把 14 个指数放在一起比：涨得多不多、贵不贵、稳不稳。PE/PB 来自蛋卷；上证 PE 用上交所官方、PB 按沪市前 300 只估算；北证50 按市值前 50 估算。评分是综合排名，不是买卖建议。</div>
     <p class="lede">先看三大指数，再看宽基梯队，最后看行业分组；点任意卡片可展开详情。</p>
     <div class="four" id="idxSummary"></div>
 
@@ -572,7 +572,11 @@ body.simple #idxView button[data-view="corr"]{display:none}
 
   function pctText(v){ return v==null?'—':(v>=0?'+':'')+v.toFixed(2)+'%'; }
   function pctCls(v){ return v>=0?'up':'down'; }
-  function valText(p){ if(p==null) return '—'; return (p<30?'便宜':p<70?'正常':'偏贵')+' '+p+'%'; }
+  function valText(v){
+    if(!v||v.pe==null) return '—';
+    if(v.pe_pct==null) return 'PE '+v.pe+' · PB '+(v.pb!=null?v.pb:'—');
+    return (v.pe_pct<30?'便宜':v.pe_pct<70?'正常':'偏贵')+' '+v.pe_pct+'%';
+  }
   function simpleSignal(s){
     var map={'多头排列':'趋势偏强','空头排列':'趋势偏弱','MACD 金叉':'刚转强','MACD 死叉':'刚转弱',
       'RSI 超买':'短期过热','RSI 超卖':'短期超跌','突破布林上轨':'短期偏热','跌破布林下轨':'短期偏冷'};
@@ -595,8 +599,10 @@ body.simple #idxView button[data-view="corr"]{display:none}
     return ['震荡整理','mid'];
   }
   function valTag(it){
-    if(!it.valuation||it.valuation.pe_pct==null) return ['估值暂无','mid'];
-    var p=it.valuation.pe_pct;
+    var v=it.valuation;
+    if(!v||v.pe==null) return ['估值暂无','mid'];
+    if(v.pe_pct==null) return ['PE '+v.pe,'mid'];
+    var p=v.pe_pct;
     return p<30?['估值便宜','deep']:p<70?['估值正常','mid']:['估值偏贵','high'];
   }
   function riskTag(it){ return it.vol60<20?['波动低','mid']:it.vol60<30?['波动中','mid']:['波动高','high']; }
@@ -627,7 +633,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
         '<div class="v">'+fmt(it.close,2)+'</div>'+
         sparkSvg(it.series)+
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="tag '+t[1]+'">'+t[0]+'</span><span class="tag '+v[1]+'">'+v[0]+'</span><span class="tag '+r[1]+'">'+r[0]+'</span></div>'+
-        '<div class="d" style="margin-top:8px">'+(it.valuation?'PE 分位 '+it.valuation.pe_pct+'% · ':'')+'评分 '+fmt(it.score,1)+'</div>'+
+        '<div class="d" style="margin-top:8px">'+(it.valuation?('PE '+it.valuation.pe+' · PB '+(it.valuation.pb!=null?it.valuation.pb:'—')+(it.valuation.pe_pct!=null?' · 分位 '+it.valuation.pe_pct+'%':'')):'估值暂无')+' · 评分 '+fmt(it.score,1)+'</div>'+
       '</div>';
     }).join('');
     bindIdxCards('bigThree');
@@ -697,9 +703,12 @@ body.simple #idxView button[data-view="corr"]{display:none}
     var items=IDX.indices.slice().sort(function(a,b){ return b.score-a.score; });
     $('idxTable').querySelector('tbody').innerHTML=items.map(function(x){
       var sel=(idxSelected===x.code)?' style="background:var(--blue-soft)"':'';
-      var hasVal=x.valuation&&x.valuation.pe_pct!=null;
-      var tagCls=hasVal?(x.valuation.pe_pct<30?'deep':x.valuation.pe_pct<70?'mid':'high'):'mid';
-      var tagTxt=hasVal?(x.valuation.pe_pct<30?'便宜':x.valuation.pe_pct<70?'正常':'偏贵'):'—';
+      var hasPe=x.valuation&&x.valuation.pe!=null;
+      var hasPct=x.valuation&&x.valuation.pe_pct!=null;
+      var tagCls=hasPct?(x.valuation.pe_pct<30?'deep':x.valuation.pe_pct<70?'mid':'high'):'mid';
+      var tagTxt=hasPct?(x.valuation.pe_pct<30?'便宜':x.valuation.pe_pct<70?'正常':'偏贵'):'';
+      var simpleVal=hasPct?('<span class="tag '+tagCls+'">'+tagTxt+'</span> '+x.valuation.pe_pct+'%')
+        :(hasPe?('PE '+x.valuation.pe+' · PB '+(x.valuation.pb!=null?x.valuation.pb:'—')):'—');
       var sigSimple=x.signals.length?simpleSignal(x.signals[0]):'—';
       return '<tr data-code="'+x.code+'"'+sel+'>'+
         '<td><b>'+x.name+'</b><div class="d" style="font-size:10px;color:var(--faint)">'+x.code.toUpperCase()+'</div></td>'+
@@ -708,8 +717,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
         '<td class="num '+pctCls(x.ret['20'])+'">'+pctText(x.ret['20'])+'</td>'+
         '<td class="num pro-only '+pctCls(x.ret['60'])+'">'+pctText(x.ret['60'])+'</td>'+
         '<td class="num '+pctCls(x.ret['250'])+'">'+pctText(x.ret['250'])+'</td>'+
-        '<td class="num simple-only">'+(hasVal?'<span class="tag '+tagCls+'">'+tagTxt+'</span> '+x.valuation.pe_pct+'%':'—')+'</td>'+
-        '<td class="num pro-only">'+(hasVal?x.valuation.pe_pct+'%':'—')+'</td>'+
+        '<td class="num simple-only">'+simpleVal+'</td>'+
+        '<td class="num pro-only">'+(hasPct?x.valuation.pe_pct+'%':(hasPe?'PE '+x.valuation.pe:'—'))+'</td>'+
         '<td class="num pro-only">'+fmt(x.vol60,1)+'%</td>'+
         '<td class="num"><b>'+fmt(x.score,1)+'</b></td>'+
         '<td><span class="simple-only">'+sigSimple+'</span>'+
@@ -786,14 +795,14 @@ body.simple #idxView button[data-view="corr"]{display:none}
     var simpleCards=[
       ['近1月',pctText(it.ret['20']),pctCls(it.ret['20'])],
       ['近1年',pctText(it.ret['250']),pctCls(it.ret['250'])],
-      ['贵不贵',it.valuation?valText(it.valuation.pe_pct):'—',''],
+      ['贵不贵',valText(it.valuation),''],
       ['综合评分',fmt(it.score,1),'']
     ];
     var proCards=[
       ['近1月',pctText(it.ret['20']),pctCls(it.ret['20'])],
       ['近3月',pctText(it.ret['60']),pctCls(it.ret['60'])],
       ['近1年',pctText(it.ret['250']),pctCls(it.ret['250'])],
-      ['贵不贵',it.valuation?valText(it.valuation.pe_pct):'—',''],
+      ['贵不贵',valText(it.valuation),''],
       ['RSI(14)',it.rsi==null?'—':it.rsi,it.rsi>=70?'up':(it.rsi<=30?'down':'')],
       ['60日波动',fmt(it.vol60,1)+'%',''],
       ['最大回撤',fmt(it.mdd,1)+'%','down'],

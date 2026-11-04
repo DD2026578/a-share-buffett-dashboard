@@ -45,6 +45,7 @@ EM_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
 DJ_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://danjuanfunds.com/"}
 
 CACHE = {"ts": 0, "data": None}
+MARKET_VAL = {"ts": 0, "data": None}
 LOCK = threading.Lock()
 KLINE_HOSTS = [
     "https://push2his.eastmoney.com",
@@ -109,6 +110,116 @@ def fetch_kline(secid, limit=250):
         raise RuntimeError("K线抓取失败 %s: %s / %s" % (secid, last, exc))
 
 
+SH_FS = "m:1+t:2,m:1+t:23"
+BJ_FS = "m:0+t:81+s:2048"
+SSE_URL = ("https://query.sse.com.cn/commonQuery.do?sqlId=COMMON_SSE_SJ_GPSJ_CJGK_MRGK_C"
+           "&isPagination=false&tradeDate={date}&PRODUCT_CODE=17")
+SSE_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.sse.com.cn/"}
+
+
+CLIST_HOSTS = [
+    "https://1.push2.eastmoney.com",
+    "https://2.push2.eastmoney.com",
+    "https://3.push2.eastmoney.com",
+    "https://push2delay.eastmoney.com",
+]
+
+
+def fetch_stock_pages(fs, max_pages=30):
+    rows = []
+    total = None
+    for pn in range(1, max_pages + 1):
+        path = ("/api/qt/clist/get?pn=%d&pz=100&po=1&np=1"
+                "&fltt=2&invt=2&fid=f20&fs=%s&fields=f12,f14,f20,f9,f23" % (pn, fs))
+        payload = None
+        for host in CLIST_HOSTS:
+            for _ in range(2):
+                try:
+                    payload = http_json(host + path, EM_HEADERS, timeout=12)
+                    break
+                except Exception:
+                    time.sleep(0.8)
+            if payload:
+                break
+        if not payload:
+            break
+        data = payload.get("data") or {}
+        diff = data.get("diff") or []
+        if total is None:
+            total = int(data.get("total") or 0)
+        rows.extend(diff)
+        if not diff or len(rows) >= total:
+            break
+        time.sleep(0.2)
+    return rows
+
+
+def sse_market_pe():
+    try:
+        date = datetime.datetime.now(CST).strftime("%Y-%m-%d")
+        data = http_json(SSE_URL.format(date=date), SSE_HEADERS, timeout=10)
+        row = (data.get("result") or [])[0]
+        return {"pe": round(float(row["AVG_PE_RATE"]), 2), "pb": None,
+                "pe_pct": None, "pb_pct": None, "dy": None,
+                "source": "上交所官方平均（非市值加权）"}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def to_float(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def aggregate_val(rows, top_n=None, source=""):
+    valid = [r for r in rows if to_float(r.get("f20")) > 0]
+    valid.sort(key=lambda r: to_float(r["f20"]), reverse=True)
+    if top_n:
+        valid = valid[:top_n]
+    cap = sum(to_float(r["f20"]) for r in valid)
+    earn = sum(to_float(r["f20"]) / to_float(r["f9"]) for r in valid if to_float(r.get("f9")) > 0)
+    book = sum(to_float(r["f20"]) / to_float(r["f23"]) for r in valid if to_float(r.get("f23")) > 0)
+    return {
+        "pe": round(cap / earn, 2) if earn else None,
+        "pb": round(cap / book, 2) if book else None,
+        "pe_pct": None,
+        "pb_pct": None,
+        "dy": None,
+        "source": source,
+    }
+
+
+def sh_valuation():
+    """上证：PE 用上交所官方平均（稳定），PB 用沪市前300只市值加权估算。"""
+    pe = sse_market_pe()
+    rows = fetch_stock_pages(SH_FS, max_pages=3)
+    agg = aggregate_val(rows) if rows else {}
+    return {
+        "pe": (pe or {}).get("pe") or agg.get("pe"),
+        "pb": agg.get("pb"),
+        "pe_pct": None,
+        "pb_pct": None,
+        "dy": None,
+        "source": "PE 上交所官方 / PB 沪市前300估算",
+    }
+
+
+def market_valuation():
+    """沪市 + 北证市值前50 的 PE/PB，缓存 30 分钟。"""
+    now = time.time()
+    if MARKET_VAL["data"] and now - MARKET_VAL["ts"] < 1800:
+        return MARKET_VAL["data"]
+    bj_rows = fetch_stock_pages(BJ_FS, max_pages=5)
+    bj = aggregate_val(bj_rows, top_n=50, source="北证市值前50估算") if bj_rows else \
+        {"pe": None, "pb": None, "pe_pct": None, "pb_pct": None, "dy": None, "source": "北证数据暂缺"}
+    sh = sh_valuation()
+    data = {"sh": sh, "bj": bj}
+    MARKET_VAL.update({"ts": now, "data": data})
+    return data
+
+
 def fetch_valuation(dj_code):
     if not dj_code:
         return None
@@ -123,6 +234,7 @@ def fetch_valuation(dj_code):
             "pe_pct": round(float(data["pe_percentile"]) * 100, 1),
             "pb_pct": round(float(data["pb_percentile"]) * 100, 1),
             "dy": round(float(data.get("yeild") or 0) * 100, 2),
+            "source": "蛋卷指数估值",
         }
     except Exception:  # noqa: BLE001
         return None
@@ -318,7 +430,7 @@ def add_scores(items):
             + (1 if it["close"] > (it["ma"]["20"] or 0) else 0) * 0.15
             + (1 if (it["ma"]["20"] or 0) > (it["ma"]["60"] or 0) else 0) * 0.15
         )
-        value = (100 - it["valuation"]["pe_pct"]) / 100 if it["valuation"] else 0.5
+        value = (100 - it["valuation"]["pe_pct"]) / 100 if (it["valuation"] and it["valuation"].get("pe_pct") is not None) else 0.5
         risk = (1 - percentile_rank(vols, it["vol60"]) / 100) * 0.5 + \
                (1 - percentile_rank(mdds, it["mdd"]) / 100) * 0.5
         it["score"] = round((0.4 * trend + 0.3 * value + 0.3 * risk) * 100, 1)
@@ -347,6 +459,11 @@ def build_payload():
     with ThreadPoolExecutor(max_workers=3) as pool:
         results = list(pool.map(lambda it: (it, fetch_kline(it["secid"])), INDICES))
     valuations = {it["code"]: fetch_valuation(it["dj"]) for it in INDICES}
+    mkt = market_valuation()
+    if not valuations.get("sh000001"):
+        valuations["sh000001"] = mkt.get("sh")
+    if not valuations.get("bj899050"):
+        valuations["bj899050"] = mkt.get("bj")
     items = [compute_index(it, bars, valuations.get(it["code"])) for it, bars in results]
     add_cross_metrics(items)
     add_scores(items)
