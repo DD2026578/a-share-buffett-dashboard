@@ -144,6 +144,8 @@ body.simple #idxView button[data-view="corr"]{display:none}
 .layer-title:before{content:"";width:3px;height:14px;border-radius:2px;background:var(--blue)}
 .idx-card{transition:transform .15s ease,box-shadow .15s ease}
 .idx-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.metric-note{font-size:11.5px;color:var(--mut);padding:4px 4px 2px;line-height:1.75}
+.metric-note b{color:var(--ink2)}
 </style>
 </head>
 <body>
@@ -191,18 +193,19 @@ body.simple #idxView button[data-view="corr"]{display:none}
 
   <section id="sec-trend">
     <h2><span class="num">02</span>15 年走势<button class="help-btn" type="button">?</button></h2>
-    <div class="help-box">蓝线是每个月的“贵不贵”读数；浅蓝带是近 5 年的正常波动范围；红色虚线是偏贵/偏便宜的界线。</div>
+    <div class="help-box">蓝线是每个月的“贵不贵”读数；浅蓝带是近 5 年的正常波动范围；红色虚线是偏贵/偏便宜的界线。切到 880001 看的是“A股总市值”指数（点位=总市值×100，1 点≈100 亿元），不是股价。</div>
     <p class="lede">月度证券化率与滚动均值 ±1σ 带。可切换指标、缩放区间，悬停查看每月明细。</p>
     <div class="fig">
       <div class="fig-head">
         <figcaption id="chartCaption">2011-10 至 2026-11 · 月度</figcaption>
         <div class="controls">
           <div class="seg" id="segRange"><button data-range="60">5 年</button><button data-range="120">10 年</button><button data-range="0" class="on">全部</button></div>
-          <div class="seg" id="segMetric"><button data-metric="ratio" class="on">证券化率</button><button data-metric="index">880001</button></div>
+          <div class="seg" id="segMetric"><button data-metric="ratio" class="on">证券化率</button><button data-metric="index" title="通达信 A股总市值指数：点位=总市值×100，1点≈100亿元">880001</button></div>
           <button class="btn btn-g" id="btnPng">导出图片</button>
         </div>
       </div>
       <div class="legend" id="mainLegend" style="padding:0 4px 8px"><span><i style="background:#2563eb"></i>证券化率</span><span><i style="background:rgba(37,99,235,.18)"></i>均值 ±1σ</span><span><i style="background:#dc2626"></i>阈值线</span></div>
+      <div class="metric-note" id="mainMetricNote"></div>
       <div class="chart-box" id="mainChart"></div>
     </div>
   </section>
@@ -308,6 +311,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
         <li><b>GDP 口径：</b>主读数用前一年度 GDP（滞后但稳定）；TTM 口径为 <span id="methodTtm">141.76</span> 万亿，读数为 <span id="methodTtmRatio">--</span>。</li>
         <li><b>阈值：</b>固定阈值来自 2011–2026 均值 ±20%；滚动模式用最近窗口均值 ±1σ，可在上方切换。</li>
         <li><b>PE / PB：</b>深证成指、创业板、科创50、沪深300、中证500、中证1000、红利、消费、医药、白酒、银行、证券来自蛋卷指数估值（含历史分位）；上证 PE 取上交所官方平均、PB 按沪市前 300 只市值加权估算；北证50 按市值前 50 估算。无历史分位的指数只显示 PE/PB，不做“贵/便宜”判断。</li>
+        <li><b>880001：</b>通达信板块指数，“A股总市值”点位 = 总市值 × 100，1 点≈100 亿元；本页用沪深总市值 ×100 计算等价值，它不是股价指数，反映的是市场规模。</li>
         <li><b>局限性：</b>证券化率只反映市值/GDP，不等于盈利估值；A股与美股、港股不可直接横向比较。</li>
       </ul>
     </div>
@@ -967,12 +971,15 @@ body.simple #idxView button[data-view="corr"]{display:none}
   function updateMainLegend(){
     var el=$('mainLegend'); if(!el) return;
     var P=palette();
+    var note=$('mainMetricNote');
     if(metric==='ratio'){
       el.innerHTML='<span><i style="background:'+P.line+'"></i>证券化率</span>'+
         '<span><i style="background:'+(theme==='dark'?'rgba(106,162,255,.25)':'rgba(37,99,235,.18)')+'"></i>均值 ±1σ</span>'+
         '<span><i style="background:#dc2626"></i>阈值线</span>';
+      if(note) note.innerHTML='证券化率 = A股总市值 ÷ 上一年 GDP；当前 '+ratioNow().toFixed(1)+'%。数值越高，股票整体越贵。';
     }else{
       el.innerHTML='<span><i style="background:'+P.index+'"></i>880001 指数</span>';
+      if(note) note.innerHTML='<b>880001</b> 是通达信口径的“A股总市值”指数：点位 = 总市值 × 100，1 点≈100 亿元。当前约 '+fmt(indexNow(),0)+' 点 ≈ '+fmt(indexNow()/100,2)+' 万亿。它不是股价指数，反映的是市场规模。';
     }
   }
 
