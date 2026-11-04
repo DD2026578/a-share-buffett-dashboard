@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+buffett.db
+buffett.db-wal
+buffett.db-shm
+state.json
+*.log
+echarts.min.js
+docs/echarts.min.js
