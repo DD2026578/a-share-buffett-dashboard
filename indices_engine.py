@@ -71,10 +71,19 @@ def fetch_kline_tencent(secid, limit=3000):
         raise RuntimeError("未知市场 %s" % secid)
     url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,,%d,qfq"
            % (sym, limit))
-    payload = http_json(url, {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"},
-                        timeout=10)
-    data = payload["data"][sym]
-    bars = data.get("day") or data.get("qfqday") or []
+    bars = []
+    for _ in range(2):
+        try:
+            payload = http_json(url, {"User-Agent": "Mozilla/5.0",
+                                      "Referer": "https://gu.qq.com/"}, timeout=10)
+            data = payload.get("data")
+            if isinstance(data, dict) and isinstance(data.get(sym), dict):
+                bars = data[sym].get("day") or data[sym].get("qfqday") or []
+                if len(bars) >= 30:
+                    break
+        except Exception:  # noqa: BLE001
+            bars = []
+        time.sleep(1)
     if len(bars) < 30:
         raise RuntimeError("腾讯K线不足：%s" % sym)
     out = []
