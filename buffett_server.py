@@ -35,6 +35,7 @@ CONFIG_JSON = os.path.join(BASE, "config.json")
 STATE_JSON = os.path.join(BASE, "state.json")
 PAGE_NAME = "A股巴菲特指标仪表盘.html"
 PORT = 8787
+CST = datetime.timezone(datetime.timedelta(hours=8))
 
 EM_HOSTS = [
     "https://1.push2.eastmoney.com",
@@ -154,7 +155,7 @@ def load_history():
 
 
 def in_trading_hours(now=None):
-    now = now or datetime.datetime.now()
+    now = now or datetime.datetime.now(CST)
     if now.weekday() >= 5:
         return False
     hm = now.hour * 60 + now.minute
@@ -193,7 +194,7 @@ def fetch_amount():
 
 
 def fetch_pool(url):
-    today = datetime.datetime.now().strftime("%Y%m%d")
+    today = datetime.datetime.now(CST).strftime("%Y%m%d")
     data = http_json(url.format(date=today), EM_HEADERS, timeout=8)
     return int(data.get("data", {}).get("tc") or 0)
 
@@ -328,7 +329,7 @@ def level_of(ratio, th):
 
 
 def refresh(force_valuation=False):
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(CST)
     hist = load_history()
     cfg = load_config()
     caps = fetch_caps()
@@ -415,7 +416,7 @@ def loop():
             refresh()
         except Exception as exc:  # noqa: BLE001
             ok = False
-            print("[%s] 刷新失败：%s" % (datetime.datetime.now().strftime("%H:%M:%S"), exc), flush=True)
+            print("[%s] 刷新失败：%s" % (datetime.datetime.now(CST).strftime("%H:%M:%S"), exc), flush=True)
         if not ok:
             time.sleep(15)
         else:
