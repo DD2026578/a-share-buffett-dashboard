@@ -61,6 +61,13 @@ DANJUAN = {
 }
 DANJUAN_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://danjuanfunds.com/"}
 
+SSE_URL = ("https://query.sse.com.cn/commonQuery.do?sqlId=COMMON_SSE_SJ_GPSJ_CJGK_MRGK_C"
+           "&isPagination=false&tradeDate={date}&PRODUCT_CODE=17")
+SSE_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.sse.com.cn/"}
+SZSE_URL = ("https://www.szse.cn/api/report/ShowReport/data?SHOWTYPE=JSON"
+            "&CATALOGID=1803_sczm&TABKEY=tab1&txtQueryDate={date}")
+SZSE_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.szse.cn/"}
+
 DEFAULT_CONFIG = {
     "rf": 1.80,
     "gdp_ttm": 141.76,
@@ -163,7 +170,7 @@ def in_trading_hours(now=None):
 
 
 # ---------- 抓取 ----------
-def fetch_caps():
+def fetch_caps_em():
     payload = em_json(CAP_PATH)
     rows = payload["data"]["diff"]
     caps = {"sh": 0.0, "sz": 0.0, "bj": 0.0}
@@ -181,6 +188,32 @@ def fetch_caps():
     return caps
 
 
+def fetch_caps_official():
+    """交易所官方口径兜底：上交所（股票）+ 深交所（股票），返回总市值与成交额（万亿元）。"""
+    date = datetime.datetime.now(CST).strftime("%Y-%m-%d")
+    sse = http_json(SSE_URL.format(date=date), SSE_HEADERS, timeout=10)
+    sse_row = (sse.get("result") or [])[0]
+    szse = http_json(SZSE_URL.format(date=date), SZSE_HEADERS, timeout=10)
+    szse_row = szse[0]["data"][0]
+    sh = float(sse_row["TOTAL_VALUE"]) / 10000.0
+    sz = float(str(szse_row["sjzz"]).replace(",", "")) / 10000.0
+    sse_amt = float(sse_row.get("TRADE_AMT") or 0) / 10000.0
+    szse_amt = float(str(szse_row.get("cjje") or "0").replace(",", "")) / 10000.0
+    if sh <= 0 or sz <= 0:
+        raise RuntimeError("交易所总市值为空")
+    return {"sh": sh, "sz": sz, "bj": 0.0}, sse_amt + szse_amt
+
+
+def fetch_caps():
+    """优先东方财富；失败则切换交易所官方。返回 (caps, source, official_amount)。"""
+    try:
+        return fetch_caps_em(), "东方财富", None
+    except Exception as exc:  # noqa: BLE001
+        print("东方财富总市值失败，切换交易所官方：%s" % exc, flush=True)
+        caps, amount = fetch_caps_official()
+        return caps, "交易所官方", amount
+
+
 def fetch_amount():
     text = http_text(SINA_URL, SINA_HEADERS, timeout=6)
     total = 0.0
@@ -194,9 +227,12 @@ def fetch_amount():
 
 
 def fetch_pool(url):
-    today = datetime.datetime.now(CST).strftime("%Y%m%d")
-    data = http_json(url.format(date=today), EM_HEADERS, timeout=8)
-    return int(data.get("data", {}).get("tc") or 0)
+    try:
+        today = datetime.datetime.now(CST).strftime("%Y%m%d")
+        data = http_json(url.format(date=today), EM_HEADERS, timeout=8)
+        return int(data.get("data", {}).get("tc") or 0)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def fetch_valuation(force=False):
@@ -257,7 +293,7 @@ def rolling_stats(series, months):
     return round(mean, 2), round(var ** 0.5, 2)
 
 
-def build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now):
+def build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now, sources):
     total = caps["sh"] + caps["sz"]
     gdp_yi = hist["gdp"].get(str(now.year - 1)) or hist["gdp"].get(str(now.year - 2))
     gdp_mv = gdp_yi / 10000.0
@@ -303,7 +339,7 @@ def build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now):
             "sz_mv": round(caps["sz"], 2),
             "bj_mv": round(caps["bj"], 3),
             "total_mv": round(total, 2),
-            "amount": round(amount, 2),
+            "amount": round(amount, 2) if amount is not None else None,
             "zt": zt,
             "dt": dt,
             "top10": top10.get("ratio", 0),
@@ -315,6 +351,7 @@ def build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now):
         "rf": float(cfg["rf"]),
         "ttm": {"gdp": ttm_gdp, "ratio": ttm_ratio},
         "config": cfg,
+        "sources": sources,
     }
 
 
@@ -332,21 +369,33 @@ def refresh(force_valuation=False):
     now = datetime.datetime.now(CST)
     hist = load_history()
     cfg = load_config()
-    caps = fetch_caps()
+    caps, caps_source, official_amount = fetch_caps()
+    amount_source = "新浪"
     try:
         amount = fetch_amount()
     except Exception:  # noqa: BLE001
-        amount = 0.0
-    try:
-        zt = fetch_pool(ZT_URL)
-        dt = fetch_pool(DT_URL)
-    except Exception:  # noqa: BLE001
-        zt, dt = 0, 0
+        amount = None
+    if amount is None:
+        if official_amount is None:
+            try:
+                _, official_amount = fetch_caps_official()
+            except Exception:  # noqa: BLE001
+                official_amount = None
+        amount = official_amount
+        amount_source = "交易所官方" if amount is not None else "不可用"
+    zt = fetch_pool(ZT_URL)
+    dt = fetch_pool(DT_URL)
     valuation = fetch_valuation(force_valuation)
     total = caps["sh"] + caps["sz"]
     top10 = fetch_top10(total, force_valuation)
 
-    snap = build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now)
+    sources = {
+        "caps": caps_source,
+        "amount": amount_source,
+        "valuation": bool(valuation.get("hs300") and valuation.get("zz500")),
+        "pools": zt is not None and dt is not None,
+    }
+    snap = build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now, sources)
     date = now.strftime("%Y-%m-%d")
     month = now.strftime("%Y-%m")
 
@@ -404,9 +453,9 @@ def refresh(force_valuation=False):
         state["intraday"] = [[r[0][11:16], r[1]] for r in intraday]
     with open(STATE_JSON, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False)
-    print("[%s] %.4f万亿 | %.2f%% | 分位%.1f%% | 涨停%d 跌停%d" %
+    print("[%s] %.4f万亿 | %.2f%% | 分位%.1f%% | 涨停%s 跌停%s | 源:%s/%s" %
           (snap["updated"], snap["market"]["total_mv"], snap["ratio"],
-           snap["percentile"], zt, dt), flush=True)
+           snap["percentile"], zt, dt, caps_source, amount_source), flush=True)
 
 
 def loop():
