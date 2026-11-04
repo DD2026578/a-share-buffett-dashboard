@@ -92,6 +92,9 @@ figcaption{font-size:12px;color:var(--mut);font-weight:600}
 .bar>b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
 .tag{display:inline-block;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 9px;color:#fff}
 .tag.deep{background:var(--green)}.tag.low{background:var(--teal)}.tag.mid{background:#64748b}.tag.high{background:var(--rose)}
+.tag.strong{background:var(--rose)}
+.tag.weak{background:var(--green)}
+body.simple h2 .num{display:none}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 thead th{background:var(--line2);color:var(--mut);font-size:11px;letter-spacing:.04em;padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
 tbody td{padding:9px 12px;border-bottom:1px solid var(--line2)}
@@ -129,6 +132,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   .wrap{padding:0 18px 56px}
   .kpis,.four,.form-grid{grid-template-columns:1fr}
   .chart-box{height:300px}
+  .hero .hero-tools{position:static;margin-top:12px;justify-content:flex-end}
 }
 @media(prefers-reduced-motion:reduce){.live i{animation:none}.kpi{transition:none}}
 .hero-tools{position:absolute;right:28px;top:-34px;display:flex;gap:8px}
@@ -465,11 +469,19 @@ body.simple #idxView button[data-view="corr"]{display:none}
     $('updLabel').textContent='当前读数 · '+(src().asof||'--')+(API?' · 实时':' · 离线');
     $('kMv').textContent=fmt((API?API.market.total_mv:indexNow()/100),2)+' 万亿';
     var m=API?API.market:{};
-    $('kMvD').textContent='沪 '+fmt(m.sh_mv||0,2)+' · 深 '+fmt(m.sz_mv||0,2)+' · 北交 '+fmt(m.bj_mv||0,2);
+    if(API){
+      $('kMvD').textContent='沪 '+fmt(m.sh_mv||0,2)+' · 深 '+fmt(m.sz_mv||0,2)+' · 北交 '+fmt(m.bj_mv||0,2);
+    }else{
+      $('kMvD').textContent='沪深总市值口径';
+    }
     var y=Number(series()[series().length-1][0].slice(0,4));
     var g=gdpFor(y);
     $('kGdp').textContent=fmt(g/10000,2)+' 万亿';
-    $('kGdpD').textContent='TTM '+fmt(API&&API.ttm?API.ttm.gdp:0,2)+' 万亿 · 读数 '+fmt(API&&API.ttm?API.ttm.ratio:0,2)+'%';
+    if(API&&API.ttm){
+      $('kGdpD').textContent='TTM '+fmt(API.ttm.gdp,2)+' 万亿 · 读数 '+fmt(API.ttm.ratio,2)+'%';
+    }else{
+      $('kGdpD').textContent='TTM 口径见专业模式';
+    }
     $('kPct').textContent=(API?API.percentile:percentile(v)).toFixed(1)+'%';
     $('kPctD').textContent='样本 '+series().length+' 个月';
     $('kHigh').textContent=(v-TH.high>=0?'+':'')+fmt(v-TH.high,2)+' 个百分点';
@@ -581,6 +593,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
   function pctCls(v){ return v>=0?'up':'down'; }
   function valText(v){
     if(!v||v.pe==null) return '—';
+    if(v.pe_zone) return v.pe_zone+' · PE '+v.pe;
     if(v.pe_pct==null) return 'PE '+v.pe+' · PB '+(v.pb!=null?v.pb:'—');
     return (v.pe_pct<30?'便宜':v.pe_pct<70?'正常':'偏贵')+' '+v.pe_pct+'%';
   }
@@ -601,13 +614,14 @@ body.simple #idxView button[data-view="corr"]{display:none}
 
   function trendTag(it){
     var a=it.ma['20']||0, b=it.ma['60']||0;
-    if(it.close>a && a>b) return ['趋势偏强','deep'];
-    if(it.close<a && a<b) return ['趋势偏弱','high'];
+    if(it.close>a && a>b) return ['趋势偏强','strong'];
+    if(it.close<a && a<b) return ['趋势偏弱','weak'];
     return ['震荡整理','mid'];
   }
   function valTag(it){
     var v=it.valuation;
     if(!v||v.pe==null) return ['估值暂无','mid'];
+    if(v.pe_zone) return ['估值'+v.pe_zone,(v.pe_zone==='低估'||v.pe_zone==='偏低')?'deep':(v.pe_zone==='高估'?'high':'mid')];
     if(v.pe_pct==null) return ['PE '+v.pe,'mid'];
     var p=v.pe_pct;
     return p<30?['估值便宜','deep']:p<70?['估值正常','mid']:['估值偏贵','high'];
@@ -712,9 +726,11 @@ body.simple #idxView button[data-view="corr"]{display:none}
       var sel=(idxSelected===x.code)?' style="background:var(--blue-soft)"':'';
       var hasPe=x.valuation&&x.valuation.pe!=null;
       var hasPct=x.valuation&&x.valuation.pe_pct!=null;
-      var tagCls=hasPct?(x.valuation.pe_pct<30?'deep':x.valuation.pe_pct<70?'mid':'high'):'mid';
-      var tagTxt=hasPct?(x.valuation.pe_pct<30?'便宜':x.valuation.pe_pct<70?'正常':'偏贵'):'';
-      var simpleVal=hasPct?('<span class="tag '+tagCls+'">'+tagTxt+'</span> '+x.valuation.pe_pct+'%')
+      var zone=x.valuation&&x.valuation.pe_zone;
+      var tagCls=zone?((zone==='低估'||zone==='偏低')?'deep':(zone==='高估'?'high':'mid'))
+        :(hasPct?(x.valuation.pe_pct<30?'deep':x.valuation.pe_pct<70?'mid':'high'):'mid');
+      var tagTxt=zone?('估值'+zone):(hasPct?(x.valuation.pe_pct<30?'便宜':x.valuation.pe_pct<70?'正常':'偏贵'):'');
+      var simpleVal=(zone||hasPct)?('<span class="tag '+tagCls+'">'+tagTxt+'</span> '+x.valuation.pe_pct+'%')
         :(hasPe?('PE '+x.valuation.pe+' · PB '+(x.valuation.pb!=null?x.valuation.pb:'—')):'—');
       var sigSimple=x.signals.length?simpleSignal(x.signals[0]):'—';
       return '<tr data-code="'+x.code+'"'+sel+'>'+
@@ -839,7 +855,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
     var peHead=$('peHead'), peBox=$('peChart');
     if(v&&v.pe_hist&&v.pe_hist.pe&&v.pe_low!=null&&window.echarts){
       peHead.style.display='flex'; peBox.style.display='block';
-      $('peMeta').textContent='当前 PE '+v.pe+' · 低估 '+v.pe_low+' · 中轴 '+v.pe_mid+' · 高估 '+v.pe_high+'（10年分位20/50/80）';
+      $('peMeta').textContent='当前 PE '+v.pe+' · 低估 '+v.pe_low+' · 中轴 '+v.pe_mid+' · 高估 '+v.pe_high+'（10年分位20/50/80）'+(v.pe_zone?' · 当前'+v.pe_zone:'');
       if(!charts.pe) charts.pe=echarts.init(peBox,null,{renderer:'canvas'});
       var Q=palette();
       var pes=v.pe_hist.pe, maxPe=Math.max.apply(null,pes)*1.05;
@@ -1022,7 +1038,6 @@ body.simple #idxView button[data-view="corr"]{display:none}
         markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed',color:P.mut},
           label:{color:P.mut,fontSize:10},data:[{yAxis:TH.mid,name:'均值'},{yAxis:TH.high,name:'高估线'}]}}]
     });
-    window.addEventListener('resize',function(){ if(charts.intra) charts.intra.resize(); });
   }
 
   function toast(msg){
@@ -1106,6 +1121,9 @@ body.simple #idxView button[data-view="corr"]{display:none}
       document.querySelectorAll('.help-box').forEach(function(x){x.classList.remove('on');});
       if(!on) box.classList.add('on');
     });
+  });
+  document.addEventListener('click',function(){
+    document.querySelectorAll('.help-box').forEach(function(x){x.classList.remove('on');});
   });
   document.querySelectorAll('#segRange button').forEach(function(b){
     b.addEventListener('click',function(){
