@@ -12,7 +12,7 @@ PAGE = "A股巴菲特指标仪表盘.html"
 os.makedirs(DOCS, exist_ok=True)
 
 shutil.copyfile(os.path.join(ROOT, PAGE), os.path.join(DOCS, "index.html"))
-for name in ("data.js",):
+for name in ("data.js", "indices.js"):
     src = os.path.join(ROOT, name)
     if os.path.exists(src):
         shutil.copyfile(src, os.path.join(DOCS, name))

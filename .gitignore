@@ -7,3 +7,5 @@ state.json
 *.log
 echarts.min.js
 docs/echarts.min.js
+indices.js
+docs/indices.js

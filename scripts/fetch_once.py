@@ -16,4 +16,13 @@ try:
     print("fetch ok: %.2f%%" % server.state.get("ratio", 0))
 except Exception as exc:  # noqa: BLE001
     print("fetch failed, keep previous data: %s" % exc)
-    sys.exit(0)
+
+try:
+    import indices_engine
+
+    payload = indices_engine.write_static(os.path.join(ROOT, "indices.js"))
+    print("indices ok: %d" % len(payload["indices"]))
+except Exception as exc:  # noqa: BLE001
+    print("indices failed, keep previous data: %s" % exc)
+
+sys.exit(0)

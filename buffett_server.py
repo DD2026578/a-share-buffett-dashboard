@@ -27,6 +27,8 @@ import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
+import indices_engine
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE, "buffett.db")
 DATA_JS = os.path.join(BASE, "data.js")
@@ -472,6 +474,20 @@ def loop():
             time.sleep(30 if in_trading_hours() else 300)
 
 
+def indices_loop():
+    while True:
+        try:
+            payload = indices_engine.get_payload(force=True)
+            with open(os.path.join(BASE, "indices.js"), "w", encoding="utf-8") as f:
+                f.write("window.INDEX_DATA = " +
+                        json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";\n")
+            print("[%s] 指数全景已更新：%d 个指数" %
+                  (datetime.datetime.now(CST).strftime("%H:%M:%S"), len(payload["indices"]))),
+        except Exception as exc:  # noqa: BLE001
+            print("指数全景刷新失败：%s" % exc, flush=True)
+        time.sleep(600 if in_trading_hours() else 1800)
+
+
 # ---------- HTTP ----------
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -502,6 +518,12 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/api/config":
             self._json(load_config())
+            return
+        if path == "/api/indices":
+            try:
+                self._json(indices_engine.get_payload())
+            except Exception as exc:  # noqa: BLE001
+                self._json({"error": str(exc)}, 503)
             return
         if path == "/api/export.csv":
             with state_lock:
@@ -574,6 +596,7 @@ def main():
             print("历史数据读取失败：%s" % exc)
 
     threading.Thread(target=loop, daemon=True).start()
+    threading.Thread(target=indices_loop, daemon=True).start()
     try:
         server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:
