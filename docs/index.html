@@ -131,6 +131,11 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   .chart-box{height:300px}
 }
 @media(prefers-reduced-motion:reduce){.live i{animation:none}.kpi{transition:none}}
+.hero-tools{position:absolute;right:28px;top:-34px;display:flex;gap:8px}
+.hero-tools .theme-btn{position:static}
+body.simple .pro-only{display:none!important}
+body:not(.simple) .simple-only{display:none!important}
+body.simple #idxView button[data-view="corr"]{display:none}
 </style>
 </head>
 <body>
@@ -147,7 +152,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     <span class="delta" id="heroDelta">--</span>
     <div class="hsrc" id="heroSrc">沪深两市总市值 / 上一年度 GDP</div>
   </div>
-  <button class="theme-btn" id="themeBtn">深色</button>
+  <div class="hero-tools"><button class="theme-btn" id="modeBtn">专业模式</button><button class="theme-btn" id="themeBtn">深色</button></div>
 </div></div>
 
 <div class="wrap">
@@ -209,7 +214,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
-  <section id="sec-valuation">
+  <section id="sec-valuation" class="pro-only">
     <h2><span class="num">04</span>估值组合</h2>
     <p class="lede">单看市值/GDP 容易误判，配合 PE、PB 分位与股债性价比交叉验证。</p>
     <div class="three">
@@ -241,7 +246,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
-  <section id="sec-compare">
+  <section id="sec-compare" class="pro-only">
     <h2><span class="num">06</span>横向定位</h2>
     <p class="lede">不同市场的证券化率结构性差异很大，只做纵向比较。灰色为经验区间，仅作参考。</p>
     <div class="card">
@@ -251,7 +256,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
-  <section id="sec-alert">
+  <section id="sec-alert" class="pro-only">
     <h2><span class="num">07</span>阈值预警</h2>
     <p class="lede">读数穿越阈值时记录提醒；开启浏览器通知后，页面在后台也能收到。</p>
     <div class="two">
@@ -280,7 +285,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
-  <section id="sec-method">
+  <section id="sec-method" class="pro-only">
     <h2><span class="num">08</span>口径与敏感性</h2>
     <div class="bul">
       <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.9;color:var(--ink2)">
@@ -310,8 +315,8 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
     <div class="card table-scroll" style="padding:8px 12px;margin-top:14px">
       <table id="idxTable">
-        <thead><tr><th>指数</th><th class="num">最新</th><th class="num">1D</th><th class="num">20D</th><th class="num">60D</th><th class="num">250D</th><th class="num">PE分位</th><th class="num">波动</th><th class="num">评分</th><th>信号</th></tr></thead>
-        <tbody><tr><td colspan="10" style="color:var(--faint)">加载中…</td></tr></tbody>
+        <thead><tr><th>指数</th><th class="num">最新</th><th class="num">今天</th><th class="num">近1月</th><th class="num pro-only">近3月</th><th class="num">近1年</th><th class="num simple-only">贵不贵</th><th class="num pro-only">PE分位</th><th class="num pro-only">波动</th><th class="num">评分</th><th>信号</th></tr></thead>
+        <tbody><tr><td colspan="11" style="color:var(--faint)">加载中…</td></tr></tbody>
       </table>
     </div>
     <div class="fig" id="idxDetail" style="margin-top:14px;display:none">
@@ -364,6 +369,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   var metric = 'ratio';
   var lastAlertId = 0;
   var notifyOn = localStorage.getItem('buffett-notify') === '1';
+  var mode = localStorage.getItem('buffett-mode') || 'simple';
   var theme = localStorage.getItem('buffett-theme') || 'light';
   var lastUpdated = '';
 
@@ -534,6 +540,12 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
 
   function pctText(v){ return v==null?'—':(v>=0?'+':'')+v.toFixed(2)+'%'; }
   function pctCls(v){ return v>=0?'up':'down'; }
+  function valText(p){ if(p==null) return '—'; return (p<30?'便宜':p<70?'正常':'偏贵')+' '+p+'%'; }
+  function simpleSignal(s){
+    var map={'多头排列':'趋势偏强','空头排列':'趋势偏弱','MACD 金叉':'刚转强','MACD 死叉':'刚转弱',
+      'RSI 超买':'短期过热','RSI 超卖':'短期超跌','突破布林上轨':'短期偏热','跌破布林下轨':'短期偏冷'};
+    return map[s]||s;
+  }
   function idxOf(code){ return IDX?IDX.indices.filter(function(x){return x.code===code;})[0]:null; }
 
   function renderIdxSummary(){
@@ -557,17 +569,23 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     var items=IDX.indices.slice().sort(function(a,b){ return b.score-a.score; });
     $('idxTable').querySelector('tbody').innerHTML=items.map(function(x){
       var sel=(idxSelected===x.code)?' style="background:var(--blue-soft)"':'';
+      var hasVal=x.valuation&&x.valuation.pe_pct!=null;
+      var tagCls=hasVal?(x.valuation.pe_pct<30?'deep':x.valuation.pe_pct<70?'mid':'high'):'mid';
+      var tagTxt=hasVal?(x.valuation.pe_pct<30?'便宜':x.valuation.pe_pct<70?'正常':'偏贵'):'—';
+      var sigSimple=x.signals.length?simpleSignal(x.signals[0]):'—';
       return '<tr data-code="'+x.code+'"'+sel+'>'+
         '<td><b>'+x.name+'</b><div class="d" style="font-size:10px;color:var(--faint)">'+x.code.toUpperCase()+'</div></td>'+
         '<td class="num">'+fmt(x.close,2)+'</td>'+
         '<td class="num '+pctCls(x.pct)+'">'+pctText(x.pct)+'</td>'+
         '<td class="num '+pctCls(x.ret['20'])+'">'+pctText(x.ret['20'])+'</td>'+
-        '<td class="num '+pctCls(x.ret['60'])+'">'+pctText(x.ret['60'])+'</td>'+
+        '<td class="num pro-only '+pctCls(x.ret['60'])+'">'+pctText(x.ret['60'])+'</td>'+
         '<td class="num '+pctCls(x.ret['250'])+'">'+pctText(x.ret['250'])+'</td>'+
-        '<td class="num">'+(x.valuation?x.valuation.pe_pct+'%':'—')+'</td>'+
-        '<td class="num">'+fmt(x.vol60,1)+'%</td>'+
+        '<td class="num simple-only">'+(hasVal?'<span class="tag '+tagCls+'">'+tagTxt+'</span> '+x.valuation.pe_pct+'%':'—')+'</td>'+
+        '<td class="num pro-only">'+(hasVal?x.valuation.pe_pct+'%':'—')+'</td>'+
+        '<td class="num pro-only">'+fmt(x.vol60,1)+'%</td>'+
         '<td class="num"><b>'+fmt(x.score,1)+'</b></td>'+
-        '<td>'+(x.signals.length?x.signals.map(function(s){return '<span class="sig">'+s+'</span>';}).join(''):'—')+'</td>'+
+        '<td><span class="simple-only">'+sigSimple+'</span>'+
+        '<span class="pro-only">'+(x.signals.length?x.signals.map(function(s){return '<span class="sig">'+s+'</span>';}).join(''):'—')+'</span></td>'+
       '</tr>';
     }).join('');
     Array.prototype.forEach.call($('idxTable').querySelectorAll('tbody tr[data-code]'),function(tr){
@@ -637,16 +655,23 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     $('idxDetail').style.display='block';
     $('detailName').textContent=it.name+' · '+it.code.toUpperCase();
     $('detailMeta').textContent=it.date+' 收盘 '+fmt(it.close,2)+'（'+pctText(it.pct)+'）';
-    var cards=[
-      ['20日收益',pctText(it.ret['20']),pctCls(it.ret['20'])],
-      ['60日收益',pctText(it.ret['60']),pctCls(it.ret['60'])],
-      ['250日收益',pctText(it.ret['250']),pctCls(it.ret['250'])],
+    var simpleCards=[
+      ['近1月',pctText(it.ret['20']),pctCls(it.ret['20'])],
+      ['近1年',pctText(it.ret['250']),pctCls(it.ret['250'])],
+      ['贵不贵',it.valuation?valText(it.valuation.pe_pct):'—',''],
+      ['综合评分',fmt(it.score,1),'']
+    ];
+    var proCards=[
+      ['近1月',pctText(it.ret['20']),pctCls(it.ret['20'])],
+      ['近3月',pctText(it.ret['60']),pctCls(it.ret['60'])],
+      ['近1年',pctText(it.ret['250']),pctCls(it.ret['250'])],
+      ['贵不贵',it.valuation?valText(it.valuation.pe_pct):'—',''],
       ['RSI(14)',it.rsi==null?'—':it.rsi,it.rsi>=70?'up':(it.rsi<=30?'down':'')],
       ['60日波动',fmt(it.vol60,1)+'%',''],
       ['最大回撤',fmt(it.mdd,1)+'%','down'],
-      ['Beta/相关(120D)',(it.beta==null?'—':it.beta)+' / '+(it.corr==null?'—':it.corr),''],
-      ['PE分位',it.valuation?it.valuation.pe_pct+'%':'—','']
+      ['Beta/相关(120D)',(it.beta==null?'—':it.beta)+' / '+(it.corr==null?'—':it.corr),'']
     ];
+    var cards=(mode==='simple')?simpleCards:proCards;
     $('detailStats').innerHTML=cards.map(function(c){
       return '<div class="stat"><div class="k">'+c[0]+'</div><div class="v '+c[2]+'">'+c[1]+'</div></div>';
     }).join('');
@@ -845,6 +870,17 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     $('themeBtn').textContent=theme==='dark'?'浅色':'深色';
   }
 
+  function initMode(){
+    document.body.classList.toggle('simple', mode==='simple');
+    $('modeBtn').textContent=mode==='simple'?'专业模式':'小白模式';
+    if(mode==='simple' && idxView==='corr'){
+      idxView='trend';
+      document.querySelectorAll('#idxView button').forEach(function(x){x.classList.remove('on');});
+      var tb=$('idxView').querySelector('[data-view="trend"]');
+      if(tb) tb.classList.add('on');
+    }
+  }
+
   // 交互绑定
   window.addEventListener('resize',function(){
     if(charts.main) charts.main.resize();
@@ -873,6 +909,14 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   $('themeBtn').addEventListener('click',function(){
     theme=theme==='dark'?'light':'dark'; localStorage.setItem('buffett-theme',theme); initTheme();
     drawMain(); drawIntra(); drawIdxChart(); if(idxSelected) showIdxDetail(idxSelected);
+  });
+  $('modeBtn').addEventListener('click',function(){
+    mode=mode==='simple'?'pro':'simple';
+    localStorage.setItem('buffett-mode',mode);
+    initMode();
+    renderIdxTable(); drawIdxChart();
+    if(idxSelected) showIdxDetail(idxSelected);
+    toast(mode==='simple'?'已切换小白模式':'已切换专业模式');
   });
   $('btnPng').addEventListener('click',function(){
     if(!charts.main) return;
@@ -903,6 +947,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   });
 
   initTheme();
+  initMode();
   if(!D){ $('heroVal').textContent='--'; toast('data.js 未加载'); return; }
   ensureEcharts(function(){
     applyData();
