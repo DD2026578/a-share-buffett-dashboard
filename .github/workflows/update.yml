@@ -1,0 +1,56 @@
+name: Update and Deploy Buffett Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+  schedule:
+    - cron: "*/30 1-7 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch data
+        run: python scripts/fetch_once.py
+      - name: Build static site
+        run: python scripts/build_static.py
+      - name: Fetch ECharts
+        run: curl -fsSL https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js -o docs/echarts.min.js || echo "echarts download failed"
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update buffett data"
+            git push
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

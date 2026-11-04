@@ -1,0 +1,9 @@
+{
+  "rf": 1.8,
+  "gdp_ttm": 141.76,
+  "mode": "fixed",
+  "low": 51.44,
+  "mid": 64.3,
+  "high": 77.16,
+  "rolling_months": 60
+}
