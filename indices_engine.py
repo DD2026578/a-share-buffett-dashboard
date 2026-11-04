@@ -459,9 +459,10 @@ def compute_index(item, bars, valuation):
         "dates": [parsed[i]["date"] for i in idxs],
         "ma20s": [ma20f[i] for i in idxs],
         "ma60s": [ma60f[i] for i in idxs],
-        "ret10y": round((closes[-1] / closes[0] - 1) * 100, 2) if len(closes) > 1 else None,
-        "high10y": round(max(closes), 2),
-        "low10y": round(min(closes), 2),
+        "ret10y": (round((closes[-1] / closes[-1 - min(2500, len(closes) - 1)] - 1) * 100, 2)
+                   if len(closes) > 2 else None),
+        "high10y": round(max(closes[-2500:]), 2),
+        "low10y": round(min(closes[-2500:]), 2),
     }
     metrics["signals"] = signal_list(metrics, prev_hist)
     return metrics
@@ -567,15 +568,15 @@ def build_payload():
     add_cross_metrics(items)
     add_scores(items)
 
-    # 归一化走势（按周采样，基准 100）
+    # 归一化走势（近 10 年，按周采样，基准 100）
     base = items[0]
-    dates = base["dates"]
-    step = max(1, len(dates) // 120)
-    sampled_dates = dates[::step]
+    window = min(500, len(base["dates"]))
+    sampled_dates = base["dates"][-window:]
     norm = {}
     for it in items:
-        base_value = it["series"][0]
-        norm[it["code"]] = [round(v / base_value * 100, 2) for v in it["series"][::step]][:len(sampled_dates)]
+        s = it["series"][-window:]
+        base_value = s[0]
+        norm[it["code"]] = [round(v / base_value * 100, 2) for v in s]
 
     corr_items = items[:13]  # 北证50 独立市场，不参与相关性
     payload = {

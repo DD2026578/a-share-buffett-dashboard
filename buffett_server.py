@@ -154,6 +154,9 @@ def init_db():
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               ts TEXT, date TEXT, level TEXT, ratio REAL, message TEXT
             );
+            CREATE TABLE IF NOT EXISTS meta(
+              key TEXT PRIMARY KEY, value TEXT
+            );
             """
         )
 
@@ -437,12 +440,14 @@ def refresh(force_valuation=False):
         conn.execute("DELETE FROM snapshots WHERE date < ?",
                      ((now - datetime.timedelta(days=30)).strftime("%Y-%m-%d"),))
 
-        prev = conn.execute("SELECT level FROM alerts ORDER BY id DESC LIMIT 1").fetchone()
+        prev = conn.execute("SELECT value FROM meta WHERE key='last_level'").fetchone()
         level, msg = level_of(snap["ratio"], snap["thresholds"])
-        if not prev or prev[0] != level:
+        if prev and prev[0] != level:
             conn.execute("INSERT INTO alerts(ts,date,level,ratio,message) VALUES(?,?,?,?,?)",
                          (snap["updated"], date, level, snap["ratio"],
                           "读数 %.2f%%，%s" % (snap["ratio"], msg)))
+        conn.execute("INSERT INTO meta(key,value) VALUES('last_level',?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (level,))
         recent = conn.execute("SELECT id,ts,level,ratio,message FROM alerts ORDER BY id DESC LIMIT 8").fetchall()
         intraday = conn.execute(
             "SELECT ts,ratio FROM snapshots WHERE date=? ORDER BY id", (date,)).fetchall()
