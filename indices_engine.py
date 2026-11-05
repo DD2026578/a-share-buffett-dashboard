@@ -53,6 +53,7 @@ KLINE_HOSTS = [
     "https://1.push2his.eastmoney.com",
     "https://2.push2his.eastmoney.com",
 ]
+EM_KLINE_DOWN_UNTIL = 0.0
 
 
 def http_json(url, headers, timeout=10):
@@ -69,21 +70,34 @@ def fetch_kline_tencent(secid, limit=3000):
         sym = ("bj" if code.startswith("899") else "sz") + code
     else:
         raise RuntimeError("未知市场 %s" % secid)
-    url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,,%d,qfq"
-           % (sym, limit))
-    bars = []
-    for _ in range(2):
-        try:
-            payload = http_json(url, {"User-Agent": "Mozilla/5.0",
-                                      "Referer": "https://gu.qq.com/"}, timeout=10)
-            data = payload.get("data")
-            if isinstance(data, dict) and isinstance(data.get(sym), dict):
-                bars = data[sym].get("day") or data[sym].get("qfqday") or []
-                if len(bars) >= 30:
-                    break
-        except Exception:  # noqa: BLE001
-            bars = []
-        time.sleep(1)
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"}
+    merged = {}
+    end = datetime.date.today()
+    for _ in range(6):
+        url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,%s,640,qfq"
+               % (sym, end.isoformat()))
+        bars = []
+        for _ in range(2):
+            try:
+                payload = http_json(url, headers, timeout=12)
+                data = payload.get("data")
+                if isinstance(data, dict) and isinstance(data.get(sym), dict):
+                    bars = data[sym].get("day") or data[sym].get("qfqday") or []
+                    if bars:
+                        break
+            except Exception:  # noqa: BLE001
+                bars = []
+            time.sleep(1)
+        if not bars:
+            break
+        for bar in bars:
+            merged[str(bar[0])] = bar
+        first = datetime.date.fromisoformat(str(bars[0][0]))
+        if first <= datetime.date(2010, 1, 1) or len(merged) >= limit:
+            break
+        end = first - datetime.timedelta(days=1)
+        time.sleep(0.3)
+    bars = [merged[d] for d in sorted(merged)][-limit:]
     if len(bars) < 30:
         raise RuntimeError("腾讯K线不足：%s" % sym)
     out = []
@@ -99,21 +113,24 @@ def fetch_kline_tencent(secid, limit=3000):
 
 
 def fetch_kline(secid, limit=3000):
+    global EM_KLINE_DOWN_UNTIL
     last = None
-    for host in KLINE_HOSTS:
-        for _ in range(2):
-            try:
-                url = (host + "/api/qt/stock/kline/get?secid=%s"
-                       "&fields1=f1,f2,f3,f4,f5,f6"
-                       "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"
-                       "&klt=101&fqt=1&end=20500101&lmt=%d" % (secid, limit))
-                payload = http_json(url, EM_HEADERS, timeout=10)
-                bars = payload["data"]["klines"]
-                if bars:
-                    return bars
-            except Exception as exc:  # noqa: BLE001
-                last = exc
-                time.sleep(1.5)
+    if time.time() >= EM_KLINE_DOWN_UNTIL:
+        for host in KLINE_HOSTS:
+            for _ in range(2):
+                try:
+                    url = (host + "/api/qt/stock/kline/get?secid=%s"
+                           "&fields1=f1,f2,f3,f4,f5,f6"
+                           "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"
+                           "&klt=101&fqt=1&end=20500101&lmt=%d" % (secid, limit))
+                    payload = http_json(url, EM_HEADERS, timeout=10)
+                    bars = payload["data"]["klines"]
+                    if bars:
+                        return bars
+                except Exception as exc:  # noqa: BLE001
+                    last = exc
+                    time.sleep(1.5)
+        EM_KLINE_DOWN_UNTIL = time.time() + 600
     try:
         return fetch_kline_tencent(secid, limit)
     except Exception as exc:  # noqa: BLE001
