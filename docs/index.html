@@ -825,7 +825,14 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   function drawIdxChart(){
     if(!IDX || !window.echarts) return;
     var el=$('idxChart'); if(!el) return;
+    // 小白模式下该图表在 pro-only 容器内（display:none），此时宽高为 0，
+    // 若继续初始化会得到一张被压缩到左侧的图；等切到专业模式再重建。
+    if(!el.clientWidth || !el.clientHeight){
+      if(charts.idx){ charts.idx.dispose(); charts.idx=null; }
+      return;
+    }
     if(!charts.idx) charts.idx=echarts.init(el,null,{renderer:'canvas'});
+    else charts.idx.resize();
     var P=palette(), opt;
     if(idxView==='trend'){
       var dates=IDX.norm.dates;
