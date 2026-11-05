@@ -372,9 +372,9 @@ body.simple #idxView button[data-view="corr"]{display:none}
   <section id="sec-status">
     <div class="four">
       <div class="stat"><div class="k">最后更新</div><div class="v sm" id="stUpdated">--</div><div class="d">Asia/Shanghai</div></div>
-      <div class="stat"><div class="k">刷新频率</div><div class="v">本机 30 秒</div><div class="d">公网每 15 分钟自动更新</div></div>
+      <div class="stat"><div class="k">刷新频率</div><div class="v">本机 30 秒</div><div class="d">公网页面内每 30 分钟拉取实时行情</div></div>
       <div class="stat"><div class="k">数据源</div><div class="v sm" id="stSource">--</div><div class="d" id="stSourceD">总市值 / 估值 / 情绪</div></div>
-      <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d">本地 127.0.0.1:8787</div></div>
+      <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d">本地实时 · 公网快照</div></div>
     </div>
   </section>
 
@@ -410,6 +410,8 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   }
   var D = window.BUFFETT_DATA || null;
   var API = null;
+  var LIVE = null; // 公网页面内实时行情：东方财富沪深京总市值
+  var lastLiveTry = 0;
   var charts = { main:null, intra:null, idx:null, detail:null, wide:null, pe:null };
   var rangeMonths = 0;
   var metric = 'ratio';
@@ -428,6 +430,49 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   function gdpFor(y){ var g=gdpMap(); return g[y-1] || g[y-2]; }
   function ratioNow(){ var s=series(); return s.length ? s[s.length-1][1] : 0; }
   function indexNow(){ var s=series(); return s.length ? s[s.length-1][2] : 0; }
+
+  // ---------- 公网实时行情（页面内每 30 分钟自动拉取） ----------
+  function pad2(n){ return n<10?'0'+n:''+n; }
+  function hmText(t){ return pad2(t.getHours())+':'+pad2(t.getMinutes()); }
+  function fullTime(t){ return t.getFullYear()+'-'+pad2(t.getMonth()+1)+'-'+pad2(t.getDate())+' '+pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()); }
+  function gdpLatest(){ var s=series(); if(!s.length) return 0; return gdpFor(Number(s[s.length-1][0].slice(0,4)))||0; }
+  function applyLive(mv){
+    var g=gdpLatest();
+    if(!(mv>0)||!g) return false;
+    LIVE={mv:mv, ratio:mv/(g/10000)*100, ts:new Date()};
+    renderTop(); renderStatus();
+    return true;
+  }
+  function liveJsonp(){
+    var cb='__emLive'+Math.floor(Math.random()*1e7);
+    var s=document.createElement('script'), done=false;
+    function clean(){ if(s.parentNode) s.parentNode.removeChild(s); try{ delete window[cb]; }catch(e){} }
+    window[cb]=function(j){
+      if(done) return; done=true; clean();
+      var d=(j&&j.data&&j.data.diff)||[];
+      var mv=d.reduce(function(a,x){ return a+(Number(x.f20)||0); },0)/1e12;
+      applyLive(mv);
+    };
+    s.onerror=function(){ if(done) return; done=true; clean(); };
+    s.src='https://push2.eastmoney.com/api/qt/ulist.np/get?cb='+cb+'&secids=1.000001,0.399001,0.899050&fields=f20';
+    document.head.appendChild(s);
+    setTimeout(function(){ if(!done){ done=true; clean(); } },9000);
+  }
+  function fetchLive(){
+    if(API) return;
+    var now=Date.now();
+    if(now-lastLiveTry<60000) return;
+    lastLiveTry=now;
+    var url='https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,0.399001,0.899050&fields=f20';
+    var ctrl=(window.AbortController)?new AbortController():null;
+    var timer=setTimeout(function(){ if(ctrl) ctrl.abort(); },8000);
+    fetch(url,{cache:'no-store',signal:ctrl?ctrl.signal:undefined}).then(function(r){ return r.json(); }).then(function(j){
+      clearTimeout(timer);
+      var d=(j&&j.data&&j.data.diff)||[];
+      var mv=d.reduce(function(a,x){ return a+(Number(x.f20)||0); },0)/1e12;
+      applyLive(mv);
+    }).catch(function(){ clearTimeout(timer); liveJsonp(); });
+  }
 
   function tier(v){
     if(v>=TH.high) return ['高估','#dc2626'];
@@ -462,20 +507,20 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   }
 
   function renderTop(){
-    var v=ratioNow(); var t=tier(v);
+    var v=(API||!LIVE)?ratioNow():LIVE.ratio; var t=tier(v);
     var base=API?API.series:D.series;
     var prev=base.length>1?base[base.length-2][1]:v;
     var delta=+(v-prev).toFixed(2);
     $('heroVal').textContent=v.toFixed(1)+'%';
     var hs=$('heroSt'); hs.textContent=t[0]; hs.style.background=t[1];
     $('heroDelta').textContent='较上月 '+(delta>=0?'+':'')+fmt(delta,2)+' 个百分点';
-    $('updLabel').textContent='当前读数 · '+(src().asof||'--')+(API?' · 实时':' · 静态快照');
-    $('kMv').textContent=fmt((API?API.market.total_mv:indexNow()/100),2)+' 万亿';
+    $('updLabel').textContent=(LIVE&&!API)?('当前读数 · 实时行情 '+hmText(LIVE.ts)):('当前读数 · '+(src().asof||'--')+(API?' · 实时':' · 静态快照'));
+    $('kMv').textContent=fmt((API?API.market.total_mv:(LIVE?LIVE.mv:indexNow()/100)),2)+' 万亿';
     var m=API?API.market:{};
     if(API){
       $('kMvD').textContent='沪 '+fmt(m.sh_mv||0,2)+' · 深 '+fmt(m.sz_mv||0,2)+' · 北交 '+fmt(m.bj_mv||0,2);
     }else{
-      $('kMvD').textContent='沪深总市值口径';
+      $('kMvD').textContent=LIVE?'东方财富 · 沪深京合计':'沪深总市值口径';
     }
     var y=Number(series()[series().length-1][0].slice(0,4));
     var g=gdpFor(y);
@@ -575,13 +620,22 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   function renderStatus(){
     function ageOf(s){ if(!s) return null; var m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2}):(\d{2})/); if(!m) return null; var t=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-8,+m[5],+m[6]); return Math.max(0,Math.round((Date.now()-t)/60000)); }
     function tradingNow(){ var n=new Date(Date.now()+8*3600*1000); var d=n.getUTCDay(); var hm=n.getUTCHours()*60+n.getUTCMinutes(); return d>=1&&d<=5&&hm>=540&&hm<=945; }
-    var upd=API?API.updated:(DATA&&DATA.updated);
-    var age=ageOf(upd);
+    var upd=API?API.updated:(LIVE?fullTime(LIVE.ts):(D&&D.updated));
+    var age=API?ageOf(API.updated):(LIVE?Math.max(0,Math.round((Date.now()-LIVE.ts.getTime())/60000)):ageOf(D&&D.updated));
     $('stUpdated').textContent=upd||'--';
     if(!API){
       var st=$('stState');
-      if(age!=null&&age>45&&tradingNow()){ st.textContent='数据延迟 '+age+' 分钟'; st.style.color='var(--rose)'; }
-      else { st.textContent='GitHub 自动更新'+(age!=null?' · '+age+' 分钟前':''); st.style.color='var(--mut)'; }
+      if(LIVE){
+        st.textContent='实时行情 · 30 分钟刷新'; st.style.color='var(--green)';
+        $('stSource').textContent='东方财富 · 实时';
+        $('stSourceD').textContent='沪深京总市值 · 页面内自动拉取';
+      }else{
+        var late=(age!=null&&age>45&&tradingNow());
+        st.textContent=late?('快照延迟 '+age+' 分钟'):'静态快照';
+        st.style.color=late?'var(--rose)':'var(--mut)';
+        $('stSource').textContent='data.js 快照';
+        $('stSourceD').textContent='GitHub Actions 定时生成';
+      }
       return;
     }
     if(API.sources){
@@ -1197,8 +1251,11 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     renderIndices();
     poll();
     pollIndices();
+    fetchLive();
     setInterval(poll,30000);
     setInterval(pollIndices,60000);
+    setInterval(fetchLive,30*60*1000);
+    document.addEventListener('visibilitychange',function(){ if(!document.hidden) fetchLive(); });
   });
 })();
 </script>
