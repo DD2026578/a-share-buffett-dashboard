@@ -573,13 +573,22 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   }
 
   function renderStatus(){
-    if(!API){ $('stState').textContent='GitHub 自动更新'; $('stState').style.color='var(--mut)'; return; }
-    $('stUpdated').textContent=API.updated;
+    function ageOf(s){ if(!s) return null; var m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2}):(\d{2})/); if(!m) return null; var t=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-8,+m[5],+m[6]); return Math.max(0,Math.round((Date.now()-t)/60000)); }
+    function tradingNow(){ var n=new Date(Date.now()+8*3600*1000); var d=n.getUTCDay(); var hm=n.getUTCHours()*60+n.getUTCMinutes(); return d>=1&&d<=5&&hm>=540&&hm<=945; }
+    var upd=API?API.updated:(DATA&&DATA.updated);
+    var age=ageOf(upd);
+    $('stUpdated').textContent=upd||'--';
+    if(!API){
+      var st=$('stState');
+      if(age!=null&&age>45&&tradingNow()){ st.textContent='数据延迟 '+age+' 分钟'; st.style.color='var(--rose)'; }
+      else { st.textContent='GitHub 自动更新'+(age!=null?' · '+age+' 分钟前':''); st.style.color='var(--mut)'; }
+      return;
+    }
     if(API.sources){
       $('stSource').textContent=API.sources.caps+' · 蛋卷';
       $('stSourceD').textContent='成交额：'+API.sources.amount+(API.sources.pools?' · 涨跌停正常':' · 涨跌停不可用');
     }
-    var stale=(new Date().getTime()-new Date(API.updated.replace(/-/g,'/')).getTime())>10*60*1000;
+    var stale=(age!=null&&age>10);
     var degraded=API.sources&&API.sources.caps!=='东方财富';
     if(stale){ $('stState').textContent='数据可能过期'; $('stState').style.color='var(--rose)'; }
     else if(degraded){ $('stState').textContent='降级运行'; $('stState').style.color='var(--amber)'; }

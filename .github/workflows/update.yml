@@ -6,7 +6,7 @@ on:
     paths-ignore:
       - "docs/**"
   schedule:
-    - cron: "*/15 1-7 * * 1-5"
+    - cron: "4,14,24,34,44,54 1-7 * * 1-5"
   workflow_dispatch:
 
 permissions:
