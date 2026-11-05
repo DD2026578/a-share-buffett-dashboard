@@ -372,7 +372,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
   <section id="sec-status">
     <div class="four">
       <div class="stat"><div class="k">最后更新</div><div class="v sm" id="stUpdated">--</div><div class="d">Asia/Shanghai</div></div>
-      <div class="stat"><div class="k">刷新频率</div><div class="v">30 秒</div><div class="d">交易时段 30s / 其余 5min</div></div>
+      <div class="stat"><div class="k">刷新频率</div><div class="v">本机 30 秒</div><div class="d">公网每 15 分钟自动更新</div></div>
       <div class="stat"><div class="k">数据源</div><div class="v sm" id="stSource">--</div><div class="d" id="stSourceD">总市值 / 估值 / 情绪</div></div>
       <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d">本地 127.0.0.1:8787</div></div>
     </div>
@@ -391,8 +391,11 @@ body.simple #idxView button[data-view="corr"]{display:none}
 <div class="toast" id="toast"></div>
 
 <script src="echarts.min.js" onerror="window.__echartsLocalFailed=true"></script>
-<script src="indices.js" onerror="window.__idxMissing=true"></script>
-<script src="data.js"></script>
+<script>
+(function(){var t=Date.now();
+document.write('<script src="indices.js?t='+t+'" onerror="window.__idxMissing=true"><\/script>');
+document.write('<script src="data.js?t='+t+'"><\/script>');})();
+</script>
 <script>
 (function(){
   var $ = function(id){ return document.getElementById(id); };
@@ -466,7 +469,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
     $('heroVal').textContent=v.toFixed(1)+'%';
     var hs=$('heroSt'); hs.textContent=t[0]; hs.style.background=t[1];
     $('heroDelta').textContent='较上月 '+(delta>=0?'+':'')+fmt(delta,2)+' 个百分点';
-    $('updLabel').textContent='当前读数 · '+(src().asof||'--')+(API?' · 实时':' · 离线');
+    $('updLabel').textContent='当前读数 · '+(src().asof||'--')+(API?' · 实时':' · 静态快照');
     $('kMv').textContent=fmt((API?API.market.total_mv:indexNow()/100),2)+' 万亿';
     var m=API?API.market:{};
     if(API){
@@ -570,7 +573,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
   }
 
   function renderStatus(){
-    if(!API){ $('stState').textContent='离线模式'; $('stState').style.color='var(--mut)'; return; }
+    if(!API){ $('stState').textContent='GitHub 自动更新'; $('stState').style.color='var(--mut)'; return; }
     $('stUpdated').textContent=API.updated;
     if(API.sources){
       $('stSource').textContent=API.sources.caps+' · 蛋卷';
