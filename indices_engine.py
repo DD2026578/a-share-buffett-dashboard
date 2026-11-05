@@ -570,18 +570,31 @@ def correlation_matrix(items, days=60):
 
 
 def _fetch_one(it):
-    """单个指数的 K 线抓取，失败重试 3 次，避免个别请求抖动拖垮整批。"""
+    """单个指数的 K 线抓取，失败重试 3 次，返回 (item, bars, error)。"""
     last = None
     for attempt in range(3):
         try:
-            return it, fetch_kline(it["secid"], 3000)
+            return it, fetch_kline(it["secid"], 3000), None
         except Exception as exc:  # noqa: BLE001
             last = exc
             time.sleep(2 + attempt * 2)
-    raise RuntimeError("%s 抓取失败：%s" % (it["code"], last))
+    return it, None, last
+
+
+def _load_cached_items():
+    """读取上次成功生成的 indices.js，供个别指数抓取失败时兜底。"""
+    path = os.path.join(BASE, "indices.js")
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        data = json.loads(text[text.index("{"):text.rindex("}") + 1])
+        return {x["code"]: x for x in data.get("indices", [])}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def build_payload():
+    cached = _load_cached_items()
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(_fetch_one, INDICES))
     valuations = {}
@@ -593,7 +606,19 @@ def build_payload():
         valuations["sh000001"] = mkt.get("sh")
     if not valuations.get("bj899050"):
         valuations["bj899050"] = mkt.get("bj")
-    items = [compute_index(it, bars, valuations.get(it["code"])) for it, bars in results]
+    items, reused, fresh = [], [], 0
+    for it, bars, err in results:
+        if bars:
+            items.append(compute_index(it, bars, valuations.get(it["code"])))
+            fresh += 1
+        elif cached.get(it["code"]):
+            items.append(cached[it["code"]])
+            reused.append(it["code"])
+            print("reuse cached %s: %s" % (it["code"], err), flush=True)
+        else:
+            raise RuntimeError("%s 抓取失败且无缓存：%s" % (it["code"], err))
+    if fresh < 5:
+        raise RuntimeError("仅 %d 个指数抓取成功，保留旧数据" % fresh)
     add_cross_metrics(items)
     add_scores(items)
 
@@ -614,6 +639,7 @@ def build_payload():
         "corr": {"labels": [x["name"] for x in corr_items],
                  "matrix": correlation_matrix(corr_items)},
         "norm": {"dates": sampled_dates, "series": norm},
+        "reused": reused,
         "score_formula": "综合评分 = 40% 趋势 + 30% 估值分位 + 30% 风险（波动/回撤）",
     }
     return payload
