@@ -1145,7 +1145,10 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
       checkAlerts();
       lastUpdated=d.updated;
     }).catch(function(){
-      if(!API){ $('stState').textContent='未连接'; $('stState').style.color='var(--rose)'; }
+      if(!API){
+        if(LIVE){ renderStatus(); }
+        else { $('stState').textContent='未连接'; $('stState').style.color='var(--rose)'; }
+      }
     });
   }
 
