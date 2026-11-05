@@ -1,11 +1,12 @@
 {
-  "time": "2026-11-05 09:07:26",
+  "time": "2026-11-05 09:14:01",
   "buffett": {
-    "ok": false,
-    "error": "HTTP Error 403: Forbidden"
+    "ok": true,
+    "ratio": 73.65
   },
   "indices": {
-    "ok": false,
-    "error": "bj899050 抓取失败：K线抓取失败 0.899050: None / 腾讯K线不足：bj899050"
+    "ok": true,
+    "count": 14,
+    "updated": "2026-11-05 17:15:03"
   }
 }
