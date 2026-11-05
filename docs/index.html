@@ -374,7 +374,7 @@ body.simple #idxView button[data-view="corr"]{display:none}
       <div class="stat"><div class="k">最后更新</div><div class="v sm" id="stUpdated">--</div><div class="d">Asia/Shanghai</div></div>
       <div class="stat"><div class="k">刷新频率</div><div class="v">本机 30 秒</div><div class="d">公网页面内每 30 分钟拉取实时行情</div></div>
       <div class="stat"><div class="k">数据源</div><div class="v sm" id="stSource">--</div><div class="d" id="stSourceD">总市值 / 估值 / 情绪</div></div>
-      <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d">本地实时 · 公网快照</div></div>
+      <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d" id="stStateD">本地实时 · 公网快照</div></div>
     </div>
   </section>
 
@@ -629,12 +629,15 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
         st.textContent='实时行情 · 30 分钟刷新'; st.style.color='var(--green)';
         $('stSource').textContent='东方财富 · 实时';
         $('stSourceD').textContent='沪深京总市值 · 页面内自动拉取';
+        var nextIn=Math.max(0,Math.round((LIVE.ts.getTime()+30*60000-Date.now())/60000));
+        $('stStateD').textContent='下次自动刷新 '+(nextIn<=0?'<1':nextIn)+' 分钟后';
       }else{
         var late=(age!=null&&age>45&&tradingNow());
         st.textContent=late?('快照延迟 '+age+' 分钟'):'静态快照';
         st.style.color=late?'var(--rose)':'var(--mut)';
         $('stSource').textContent='data.js 快照';
         $('stSourceD').textContent='GitHub Actions 定时生成';
+        $('stStateD').textContent='本地实时 · 公网快照';
       }
       return;
     }
@@ -1255,6 +1258,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     setInterval(poll,30000);
     setInterval(pollIndices,60000);
     setInterval(fetchLive,30*60*1000);
+    setInterval(function(){ if(!API) renderStatus(); },60000);
     document.addEventListener('visibilitychange',function(){ if(!document.hidden) fetchLive(); });
   });
 })();

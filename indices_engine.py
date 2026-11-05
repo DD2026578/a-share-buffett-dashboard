@@ -77,7 +77,7 @@ def fetch_kline_tencent(secid, limit=3000):
         url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,%s,640,qfq"
                % (sym, end.isoformat()))
         bars = []
-        for _ in range(2):
+        for _ in range(3):
             try:
                 payload = http_json(url, headers, timeout=12)
                 data = payload.get("data")
@@ -87,7 +87,7 @@ def fetch_kline_tencent(secid, limit=3000):
                         break
             except Exception:  # noqa: BLE001
                 bars = []
-            time.sleep(1)
+            time.sleep(1.5)
         if not bars:
             break
         for bar in bars:
@@ -569,9 +569,21 @@ def correlation_matrix(items, days=60):
     return matrix
 
 
+def _fetch_one(it):
+    """单个指数的 K 线抓取，失败重试 3 次，避免个别请求抖动拖垮整批。"""
+    last = None
+    for attempt in range(3):
+        try:
+            return it, fetch_kline(it["secid"], 3000)
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            time.sleep(2 + attempt * 2)
+    raise RuntimeError("%s 抓取失败：%s" % (it["code"], last))
+
+
 def build_payload():
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        results = list(pool.map(lambda it: (it, fetch_kline(it["secid"], 3000)), INDICES))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(_fetch_one, INDICES))
     valuations = {}
     for it in INDICES:
         val = fetch_valuation(it["dj"])
