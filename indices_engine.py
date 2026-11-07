@@ -19,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import urllib.request
 
+import runtime_lock
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 CACHE_SECONDS = 600
 CST = datetime.timezone(datetime.timedelta(hours=8))
@@ -359,10 +361,11 @@ def rsi14(closes):
 
 
 def stdev(values):
+    """样本标准差（n-1），与通达信 BOLL/主流行情软件口径一致。"""
     if len(values) < 2:
         return 0.0
     mean = sum(values) / len(values)
-    return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
+    return math.sqrt(sum((v - mean) ** 2 for v in values) / (len(values) - 1))
 
 
 def pct_change(closes, n):
@@ -377,7 +380,7 @@ def max_drawdown(closes, n=250):
     mdd = 0.0
     for v in window:
         peak = max(peak, v)
-        mdd = max(mdd, (v - peak) / peak)
+        mdd = min(mdd, (v - peak) / peak)
     return round(mdd * 100, 2)
 
 
@@ -459,7 +462,7 @@ def compute_index(item, bars, valuation):
         "date": last["date"],
         "close": last["close"],
         "pct": last["pct"],
-        "amount": round(last["amount"] / 1e8, 1),
+        "amount": round(last["amount"] / 1e8, 1) if last["amount"] else None,
         "ret": {str(n): pct_change(closes, n) for n in (1, 5, 20, 60, 120, 250)},
         "ma": ma,
         "rsi": rsi14(closes),
@@ -480,6 +483,9 @@ def compute_index(item, bars, valuation):
                    if len(closes) > 2 else None),
         "high10y": round(max(closes[-2500:]), 2),
         "low10y": round(min(closes[-2500:]), 2),
+        # 内部字段：供统一日期轴计算相关性 / Beta / 归一化走势，序列化前移除
+        "_daily_dates": [p["date"] for p in parsed],
+        "_daily_closes": closes,
     }
     metrics["signals"] = signal_list(metrics, prev_hist)
     return metrics
@@ -491,31 +497,34 @@ def percentile_rank(values, value):
     return round(sum(1 for v in values if v <= value) / len(values) * 100, 1)
 
 
+def _close_map(it):
+    """日期 -> 收盘价。优先用日线全量序列；缓存复用的指数退回抽样序列。"""
+    dates = it.get("_daily_dates")
+    if dates:
+        return dict(zip(dates, it.get("_daily_closes") or []))
+    return dict(zip(it.get("dates") or [], it.get("series") or []))
+
+
 def add_cross_metrics(items):
+    """Beta / 相关系数：按同一批交易日对齐后计算，避免各指数抽样步长不同导致错配。"""
     hs = next((x for x in items if x["code"] == "sh000300"), None)
     if not hs:
         return
-    hs_dates = hs["dates"]
-    hs_closes = hs["series"]
-    hs_ret = {}
-    for i in range(1, len(hs_closes)):
-        hs_ret[hs_dates[i]] = hs_closes[i] / hs_closes[i - 1] - 1
-
+    hs_map = _close_map(hs)
     for it in items:
-        dates, closes = it["dates"], it["series"]
-        common = [d for d in dates if d in hs_ret]
-        idx_ret = []
-        hs_pair = []
-        for i in range(1, len(closes)):
-            d = dates[i]
-            if d in hs_ret:
-                idx_ret.append(closes[i] / closes[i - 1] - 1)
-                hs_pair.append(hs_ret[d])
-        idx_ret = idx_ret[-120:]
-        hs_pair = hs_pair[-120:]
-        n = min(len(idx_ret), len(hs_pair))
+        m = _close_map(it)
+        common = sorted(set(m) & set(hs_map))[-121:]
+        x, y = [], []
+        for i in range(1, len(common)):
+            d0, d1 = common[i - 1], common[i]
+            v0, v1 = m.get(d0), m.get(d1)
+            h0, h1 = hs_map.get(d0), hs_map.get(d1)
+            if not (v0 and v1 and h0 and h1):
+                continue
+            x.append(v1 / v0 - 1)
+            y.append(h1 / h0 - 1)
+        n = len(x)
         if n >= 30:
-            x, y = idx_ret[-n:], hs_pair[-n:]
             mx, my = sum(x) / n, sum(y) / n
             cov = sum((x[i] - mx) * (y[i] - my) for i in range(n)) / n
             vx = sum((v - mx) ** 2 for v in x) / n
@@ -534,8 +543,7 @@ def add_scores(items):
     r20 = [x["ret"]["20"] for x in items if x["ret"]["20"] is not None]
     r60 = [x["ret"]["60"] for x in items if x["ret"]["60"] is not None]
     vols = [x["vol60"] for x in items]
-    mdds = [x["mdd"] for x in items]
-    pcts = [x["valuation"]["pe_pct"] for x in items if x["valuation"]]
+    mdds = [abs(x["mdd"]) for x in items]
 
     for it in items:
         trend = (
@@ -546,24 +554,51 @@ def add_scores(items):
         )
         value = (100 - it["valuation"]["pe_pct"]) / 100 if (it["valuation"] and it["valuation"].get("pe_pct") is not None) else 0.5
         risk = (1 - percentile_rank(vols, it["vol60"]) / 100) * 0.5 + \
-               (1 - percentile_rank(mdds, it["mdd"]) / 100) * 0.5
+               (1 - percentile_rank(mdds, abs(it["mdd"])) / 100) * 0.5
         it["score"] = round((0.4 * trend + 0.3 * value + 0.3 * risk) * 100, 1)
         it["score_parts"] = {"trend": round(trend * 100, 1), "value": round(value * 100, 1),
                              "risk": round(risk * 100, 1)}
 
 
+def add_combo_signal(items):
+    """左侧转强 = 估值便宜（PE分位<30 或 通道低估/偏低）且 趋势转强（收盘>MA20 且 20日跑赢沪深300）。"""
+    for it in items:
+        v = it.get("valuation") or {}
+        pe_pct = v.get("pe_pct")
+        zone = v.get("pe_zone")
+        cheap = (pe_pct is not None and pe_pct < 30) or (zone in ("低估", "偏低"))
+        strong = it["close"] > (it["ma"]["20"] or 0) and (it.get("rs20") or 0) > 0
+        it["combo"] = bool(cheap and strong)
+
+
 def correlation_matrix(items, days=60):
+    """近 days 个交易日的收益率相关性矩阵，按参考指数的日期轴逐日对齐。"""
+    ref_map = _close_map(items[0])
+    axis = sorted(ref_map)[-(days + 1):]
+    maps = {x["code"]: _close_map(x) for x in items}
     matrix = []
     for a in items:
         row = []
         for b in items:
-            n = min(days, len(a["series"]) - 1, len(b["series"]) - 1)
-            xa = [a["series"][i] / a["series"][i - 1] - 1 for i in range(len(a["series"]) - n, len(a["series"]))]
-            xb = [b["series"][i] / b["series"][i - 1] - 1 for i in range(len(b["series"]) - n, len(b["series"]))]
-            ma, mb = sum(xa) / n, sum(xb) / n
-            cov = sum((xa[i] - ma) * (xb[i] - mb) for i in range(n)) / n
-            va = sum((v - ma) ** 2 for v in xa) / n
-            vb = sum((v - mb) ** 2 for v in xb) / n
+            ma, mb = maps[a["code"]], maps[b["code"]]
+            common = [d for d in axis if d in ma and d in mb]
+            xa, xb = [], []
+            for i in range(1, len(common)):
+                d0, d1 = common[i - 1], common[i]
+                a0, a1 = ma.get(d0), ma.get(d1)
+                b0, b1 = mb.get(d0), mb.get(d1)
+                if not (a0 and a1 and b0 and b1):
+                    continue
+                xa.append(a1 / a0 - 1)
+                xb.append(b1 / b0 - 1)
+            n = len(xa)
+            if n < 20:
+                row.append(0)
+                continue
+            mxa, mxb = sum(xa) / n, sum(xb) / n
+            cov = sum((xa[i] - mxa) * (xb[i] - mxb) for i in range(n)) / n
+            va = sum((v - mxa) ** 2 for v in xa) / n
+            vb = sum((v - mxb) ** 2 for v in xb) / n
             row.append(round(cov / math.sqrt(va * vb), 2) if va and vb else 0)
         matrix.append(row)
     return matrix
@@ -619,28 +654,54 @@ def build_payload():
             raise RuntimeError("%s 抓取失败且无缓存：%s" % (it["code"], err))
     if fresh < 5:
         raise RuntimeError("仅 %d 个指数抓取成功，保留旧数据" % fresh)
+    # 缓存复用的指数没有日线序列，用近一年抽样收盘近似回撤，避免沿用旧的失效值
+    for it in items:
+        if not it.get("_daily_dates"):
+            cutoff = (datetime.date.fromisoformat(it["date"])
+                      - datetime.timedelta(days=365)).isoformat()
+            closes = [c for d, c in zip(it.get("dates") or [], it.get("series") or []) if d >= cutoff]
+            if len(closes) >= 30:
+                it["mdd"] = max_drawdown(closes)
     add_cross_metrics(items)
     add_scores(items)
+    add_combo_signal(items)
 
-    # 归一化走势（近 10 年，按周采样，基准 100）
-    base = items[0]
-    window = min(500, len(base["dates"]))
-    sampled_dates = base["dates"][-window:]
+    # 归一化走势：统一以参考指数（上证）的日期轴抽样，其余指数按日期取收盘，历史不足处留空
+    base_dates = items[0].get("_daily_dates") or items[0]["dates"]
+    step = max(1, len(base_dates) // 600)
+    idxs = list(range(0, len(base_dates), step))
+    if idxs[-1] != len(base_dates) - 1:
+        idxs.append(len(base_dates) - 1)
+    sampled_dates = [base_dates[i] for i in idxs]
+    date_index = {d: i for i, d in enumerate(sampled_dates)}
     norm = {}
     for it in items:
-        s = it["series"][-window:]
-        base_value = s[0]
-        norm[it["code"]] = [round(v / base_value * 100, 2) for v in s]
+        m = _close_map(it)
+        row = [None] * len(sampled_dates)
+        pts = [(date_index[d], m[d]) for d in sampled_dates if d in m and m[d]]
+        if not pts:
+            norm[it["code"]] = row
+            continue
+        v0 = pts[0][1]
+        for j, v in pts:
+            row[j] = round(v / v0 * 100, 2) if v0 else None
+        norm[it["code"]] = row
 
     corr_items = items[:13]  # 北证50 独立市场，不参与相关性
+    corr = {"labels": [x["name"] for x in corr_items],
+            "matrix": correlation_matrix(corr_items)}
+    for it in items:
+        it.pop("_daily_dates", None)
+        it.pop("_daily_closes", None)
+
     payload = {
         "updated": datetime.datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S"),
         "indices": items,
-        "corr": {"labels": [x["name"] for x in corr_items],
-                 "matrix": correlation_matrix(corr_items)},
+        "corr": corr,
         "norm": {"dates": sampled_dates, "series": norm},
         "reused": reused,
         "score_formula": "综合评分 = 40% 趋势 + 30% 估值分位 + 30% 风险（波动/回撤）",
+        "combo_formula": "左侧转强 = 估值便宜（PE分位<30 或 通道低估/偏低）且 收盘>MA20 且 20日相对沪深300超额>0",
     }
     return payload
 
@@ -657,8 +718,10 @@ def get_payload(force=False):
 
 def write_static(path):
     data = get_payload(force=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("window.INDEX_DATA = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
+    text = "window.INDEX_DATA = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n"
+    with runtime_lock.file_lock(os.path.join(BASE, "indices_write.lock")):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
     return data
 
 
