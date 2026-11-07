@@ -1,12 +1,11 @@
 {
-  "time": "2026-11-06 15:40:06",
+  "time": "2026-11-07 06:46:54",
   "buffett": {
-    "ok": true,
-    "ratio": 72.49
+    "ok": false,
+    "error": "No module named 'runtime_lock'"
   },
   "indices": {
-    "ok": true,
-    "count": 14,
-    "updated": "2026-11-06 23:41:12"
+    "ok": false,
+    "error": "No module named 'runtime_lock'"
   }
 }
