@@ -1,12 +1,12 @@
 {
-  "time": "2026-11-07 06:48:24",
+  "time": "2026-11-07 07:24:13",
   "buffett": {
-    "ok": false,
-    "error": "<urlopen error [Errno 104] Connection reset by peer>"
+    "ok": true,
+    "ratio": 73.03
   },
   "indices": {
     "ok": true,
     "count": 14,
-    "updated": "2026-11-07 14:51:48"
+    "updated": "2026-11-07 15:25:09"
   }
 }
