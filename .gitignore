@@ -6,6 +6,18 @@ buffett.db-wal
 buffett.db-shm
 state.json
 *.log
+
+# 本地启动脚本：含本机绝对路径与用户名，禁止入库
+*.bat
+*.cmd
+*.ps1
+
+# 本机环境产物与临时目录
+.screenshots/
+_pushparts/
+*.png
+
+# 由 CI 生成，不入库
 echarts.min.js
 docs/echarts.min.js
 docs/indices.js
