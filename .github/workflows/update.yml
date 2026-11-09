@@ -46,7 +46,7 @@ jobs:
           git add docs
           if ! git diff --staged --quiet; then
             git commit -m "chore: update buffett data"
-            git pull --rebase origin main
+            git pull --rebase --autostash origin main
             git push
           fi
 
