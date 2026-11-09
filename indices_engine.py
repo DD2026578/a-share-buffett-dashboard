@@ -40,6 +40,8 @@ INDICES = [
     {"code": "sz399986", "name": "中证银行", "secid": "0.399986", "dj": "SZ399986"},
     {"code": "sz399975", "name": "证券公司", "secid": "0.399975", "dj": "SZ399975"},
     {"code": "bj899050", "name": "北证50", "secid": "0.899050", "dj": None},
+    {"code": "hkHSI", "name": "恒生指数", "secid": "100.HSI", "dj": "HKHSI"},
+    {"code": "hkHSTECH", "name": "恒生科技", "secid": "124.HSTECH", "dj": "HKHSTECH"},
 ]
 
 EM_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -58,6 +60,14 @@ KLINE_HOSTS = [
 EM_KLINE_DOWN_UNTIL = 0.0
 
 
+def _log(msg):
+    """控制台输出失败（如管道断开）时静默，避免中断指数抓取流程。"""
+    try:
+        print(msg, flush=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def http_json(url, headers, timeout=10):
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -70,14 +80,21 @@ def fetch_kline_tencent(secid, limit=3000):
         sym = "sh" + code
     elif market == "0":
         sym = ("bj" if code.startswith("899") else "sz") + code
+    elif market in ("100", "124"):
+        sym = "hk" + code  # 港股：恒生指数 hkHSI、恒生科技 hkHSTECH
     else:
         raise RuntimeError("未知市场 %s" % secid)
     headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"}
     merged = {}
-    end = datetime.date.today()
+    end = None
     for _ in range(6):
-        url = ("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,%s,640,qfq"
-               % (sym, end.isoformat()))
+        # 腾讯 fqkline 接口会返回 501，改用稳定的 kline 接口（指数无需复权）
+        if end is None:
+            url = ("https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=%s,day,,,640"
+                   % sym)
+        else:
+            url = ("https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=%s,day,,%s,640"
+                   % (sym, end.isoformat()))
         bars = []
         for _ in range(3):
             try:
@@ -89,7 +106,7 @@ def fetch_kline_tencent(secid, limit=3000):
                         break
             except Exception:  # noqa: BLE001
                 bars = []
-            time.sleep(1.5)
+            time.sleep(1.2)
         if not bars:
             break
         for bar in bars:
@@ -106,6 +123,41 @@ def fetch_kline_tencent(secid, limit=3000):
     prev = None
     for bar in bars:
         date, op, close, high, low, vol = bar[:6]
+        pct = 0.0 if prev is None else (float(close) / prev - 1) * 100
+        amp = 0.0 if prev is None else (float(high) - float(low)) / prev * 100
+        out.append("%s,%s,%s,%s,%s,%s,0,%.2f,%.2f,0,0" %
+                   (date, op, close, high, low, vol, amp, pct))
+        prev = float(close)
+    return out
+
+
+def fetch_kline_sina(secid, limit=2000):
+    """新浪日线兜底：北证50 等腾讯只给 1 根 K 线的标的可用。"""
+    market, code = secid.split(".")
+    if market == "1":
+        sym = "sh" + code
+    elif market == "0":
+        sym = ("bj" if code.startswith("899") else "sz") + code
+    else:
+        raise RuntimeError("新浪不支持该市场 %s" % secid)
+    url = ("https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+           "CN_MarketData.getKLineData?symbol=%s&scale=240&ma=no&datalen=%d"
+           % (sym, min(limit, 2000)))
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"}
+    rows = http_json(url, headers, timeout=12)
+    if not isinstance(rows, list) or len(rows) < 30:
+        raise RuntimeError("新浪K线不足：%s" % sym)
+    out = []
+    prev = None
+    for row in rows:
+        date = str(row.get("day") or "")[:10]
+        op = row.get("open")
+        close = row.get("close")
+        high = row.get("high")
+        low = row.get("low")
+        vol = row.get("volume") or 0
+        if not date or close is None:
+            continue
         pct = 0.0 if prev is None else (float(close) / prev - 1) * 100
         amp = 0.0 if prev is None else (float(high) - float(low)) / prev * 100
         out.append("%s,%s,%s,%s,%s,%s,0,%.2f,%.2f,0,0" %
@@ -136,7 +188,10 @@ def fetch_kline(secid, limit=3000):
     try:
         return fetch_kline_tencent(secid, limit)
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("K线抓取失败 %s: %s / %s" % (secid, last, exc))
+        try:
+            return fetch_kline_sina(secid, limit)
+        except Exception as exc2:  # noqa: BLE001
+            raise RuntimeError("K线抓取失败 %s: %s / %s / %s" % (secid, last, exc, exc2))
 
 
 SH_FS = "m:1+t:2,m:1+t:23"
@@ -407,6 +462,31 @@ def signal_list(m, prev_macd_hist):
     return out
 
 
+def fetch_latest_amount(secid):
+    """腾讯实时行情：返回 (行情日期, 成交额(元))，K线兜底源不含成交额时补齐。"""
+    market, code = secid.split(".")
+    if market == "1":
+        sym = "sh" + code
+    elif market == "0":
+        sym = ("bj" if code.startswith("899") else "sz") + code
+    elif market in ("100", "124"):
+        sym = "hk" + code
+    else:
+        return None, None
+    try:
+        req = urllib.request.Request("https://qt.gtimg.cn/q=%s" % sym,
+                                     headers={"User-Agent": "Mozilla/5.0",
+                                              "Referer": "https://gu.qq.com/"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            text = resp.read().decode("gbk", "ignore")
+        parts = text.split('"')[1].split("~")
+        d = str(parts[30])[:8]
+        date = "%s-%s-%s" % (d[:4], d[4:6], d[6:8])
+        return date, float(parts[37]) * 1e4  # 万元 -> 元
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
 def compute_index(item, bars, valuation):
     parsed = []
     for bar in bars:
@@ -417,6 +497,10 @@ def compute_index(item, bars, valuation):
                        "pct": float(parts[8])})
     closes = [p["close"] for p in parsed]
     last = parsed[-1]
+    if not last["amount"]:
+        qdate, qamt = fetch_latest_amount(item["secid"])
+        if qamt and qdate == last["date"]:
+            last["amount"] = qamt
     ma = {}
     for n in (5, 20, 60, 120, 250):
         ma[str(n)] = round(sum(closes[-n:]) / min(n, len(closes)), 2) if len(closes) >= n else None
@@ -635,6 +719,11 @@ def build_payload():
     valuations = {}
     for it in INDICES:
         val = fetch_valuation(it["dj"])
+        if not val and cached.get(it["code"]):
+            # 蛋卷临时失败时沿用上次成功的估值，避免 PE/PB/分位突然消失
+            val = cached[it["code"]].get("valuation")
+            if val:
+                _log("reuse valuation %s" % it["code"])
         valuations[it["code"]] = attach_pe_channel(val, it["dj"])
     mkt = market_valuation()
     if not valuations.get("sh000001"):
@@ -642,6 +731,7 @@ def build_payload():
     if not valuations.get("bj899050"):
         valuations["bj899050"] = mkt.get("bj")
     items, reused, fresh = [], [], 0
+    failed = []
     for it, bars, err in results:
         if bars:
             items.append(compute_index(it, bars, valuations.get(it["code"])))
@@ -649,9 +739,11 @@ def build_payload():
         elif cached.get(it["code"]):
             items.append(cached[it["code"]])
             reused.append(it["code"])
-            print("reuse cached %s: %s" % (it["code"], err), flush=True)
+            _log("reuse cached %s: %s" % (it["code"], err))
         else:
-            raise RuntimeError("%s 抓取失败且无缓存：%s" % (it["code"], err))
+            # 单个指数失败且有缓存兜底时可以跳过，不再让整轮重建全部作废
+            failed.append(it["code"])
+            _log("skip %s: %s" % (it["code"], err))
     if fresh < 5:
         raise RuntimeError("仅 %d 个指数抓取成功，保留旧数据" % fresh)
     # 缓存复用的指数没有日线序列，用近一年抽样收盘近似回撤，避免沿用旧的失效值
@@ -687,7 +779,8 @@ def build_payload():
             row[j] = round(v / v0 * 100, 2) if v0 else None
         norm[it["code"]] = row
 
-    corr_items = items[:13]  # 北证50 独立市场，不参与相关性
+    # 北证50 与港股属独立市场，不参与 A 股相关性矩阵
+    corr_items = [x for x in items if x["code"] not in ("bj899050", "hkHSI", "hkHSTECH")]
     corr = {"labels": [x["name"] for x in corr_items],
             "matrix": correlation_matrix(corr_items)}
     for it in items:
@@ -700,28 +793,62 @@ def build_payload():
         "corr": corr,
         "norm": {"dates": sampled_dates, "series": norm},
         "reused": reused,
+        "failed": failed,
         "score_formula": "综合评分 = 40% 趋势 + 30% 估值分位 + 30% 风险（波动/回撤）",
         "combo_formula": "左侧转强 = 估值便宜（PE分位<30 或 通道低估/偏低）且 收盘>MA20 且 20日相对沪深300超额>0",
     }
     return payload
 
 
+def _load_static_payload():
+    """启动后首次请求先用磁盘上的 indices.js 兜底，避免被全量重建阻塞。"""
+    path = os.path.join(BASE, "indices.js")
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        return json.loads(text[text.index("{"):text.rindex("}") + 1])
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def get_payload(force=False):
+    # 非强制请求只读缓存/磁盘，绝不等待网络抓取，避免接口被后台重建阻塞
+    if not force:
+        data = CACHE["data"]
+        if data:
+            return data
+        disk = _load_static_payload()
+        if disk:
+            CACHE.update({"ts": time.time(), "data": disk})
+            return disk
     with LOCK:
-        now = time.time()
-        if not force and CACHE["data"] and now - CACHE["ts"] < CACHE_SECONDS:
+        if not force and CACHE["data"]:
             return CACHE["data"]
         data = build_payload()
-        CACHE.update({"ts": now, "data": data})
+        CACHE.update({"ts": time.time(), "data": data})
         return data
+
+
+def _atomic_write(path, text, retries=3):
+    """先写临时文件再原子替换，避免浏览器读到写了一半的 indices.js。"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    for i in range(retries):
+        try:
+            os.replace(tmp, path)
+            return
+        except OSError:
+            if i == retries - 1:
+                raise
+            time.sleep(0.25)
 
 
 def write_static(path):
     data = get_payload(force=True)
     text = "window.INDEX_DATA = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n"
     with runtime_lock.file_lock(os.path.join(BASE, "indices_write.lock")):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text)
+        _atomic_write(path, text)
     return data
 
 

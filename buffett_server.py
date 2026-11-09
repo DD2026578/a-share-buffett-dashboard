@@ -69,6 +69,12 @@ DANJUAN = {
 }
 DANJUAN_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://danjuanfunds.com/"}
 RF_SECID = "171.CN10Y"  # 东方财富：中国10年期国债收益率（收盘价为收益率%）
+# 东财数据中心国债收益率（push2 被阻断时的备用源，EMM00166466 = 中国10年期）
+RF_DC_URL = ("https://datacenter-web.eastmoney.com/api/data/v1/get?"
+             "reportName=RPTA_WEB_TREASURYYIELD&columns=ALL&pageSize=500"
+             "&pageNumber=%d&sortColumns=SOLAR_DATE&sortTypes=-1")
+RF_DC_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                 "Referer": "https://data.eastmoney.com/"}
 
 SSE_URL = ("https://query.sse.com.cn/commonQuery.do?sqlId=COMMON_SSE_SJ_GPSJ_CJGK_MRGK_C"
            "&isPagination=false&tradeDate={date}&PRODUCT_CODE=17")
@@ -89,6 +95,8 @@ DEFAULT_CONFIG = {
 
 state = {"ready": False}
 state_lock = threading.Lock()
+HEARTBEAT = {"refresh": 0.0, "indices": 0.0}
+THREADS = {}
 valuation_cache = {"ts": 0, "data": None}
 top10_cache = {"ts": 0, "data": None}
 rf_cache = {"ts": 0, "spot": None, "hist": None}
@@ -107,7 +115,13 @@ def http_text(url, headers, timeout=10):
         return resp.read().decode("utf-8", "ignore")
 
 
+EM_DOWN_UNTIL = 0.0  # 行情源整体失败后的冷却截止时间，避免每轮刷新空等重试
+
+
 def em_json(path, retries=3):
+    global EM_DOWN_UNTIL
+    if time.time() < EM_DOWN_UNTIL:
+        raise RuntimeError("行情源暂不可用，%d 秒后重试" % int(EM_DOWN_UNTIL - time.time()))
     last = None
     for host in EM_HOSTS:
         for _ in range(retries):
@@ -116,6 +130,7 @@ def em_json(path, retries=3):
             except Exception as exc:  # noqa: BLE001
                 last = exc
                 time.sleep(1.2)
+    EM_DOWN_UNTIL = time.time() + 120
     raise RuntimeError("行情源全部失败：%s" % last)
 
 
@@ -133,6 +148,43 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_JSON, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+LOG_PATH = os.path.join(BASE, "server.log")
+
+
+def log(msg):
+    """日志双写文件与控制台；任何输出异常都不得让后台线程退出。"""
+    line = "[%s] %s" % (datetime.datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S"), msg)
+    try:
+        if os.path.getsize(LOG_PATH) > 2 * 1024 * 1024:
+            os.replace(LOG_PATH, LOG_PATH + ".1")
+    except OSError:
+        pass
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+    try:
+        print(line, flush=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def atomic_write(path, text, retries=3):
+    """先写临时文件再原子替换，避免浏览器/其他进程读到半截 JSON 或 JS。"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    for i in range(retries):
+        try:
+            os.replace(tmp, path)
+            return
+        except OSError:
+            if i == retries - 1:
+                raise
+            time.sleep(0.25)
 
 
 def db():
@@ -180,6 +232,32 @@ def init_db():
 def load_history():
     with open(HIST_JSON, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def rebuild_series_ratios(hist):
+    """GDP 新增/修订后回溯重算历史证券化率（幂等，GDP 未变时结果不变）。
+
+    口径与 build_state 一致：ratio = 等价值(idx) × 10000 / 年度GDP(亿元)，
+    GDP 取月份所属年度的前一年（缺失则前两年）。这样 GDP 一更新，
+    历史分位、滚动阈值、预警复盘随下一轮刷新自动对齐新口径。
+    """
+    gdp = hist.get("gdp") or {}
+    changed = False
+    for row in hist.get("series") or []:
+        if not (isinstance(row, list) and len(row) >= 3 and row[2]):
+            continue
+        try:
+            y = int(str(row[0])[:4])
+        except (TypeError, ValueError):
+            continue
+        g = gdp.get(str(y - 1)) or gdp.get(str(y - 2))
+        if not g:
+            continue
+        ratio = round(float(row[2]) * 10000.0 / float(g), 2)
+        if row[1] != ratio:
+            row[1] = ratio
+            changed = True
+    return changed
 
 
 def load_breadth_hist():
@@ -274,27 +352,61 @@ def fetch_caps_em():
     return caps, (breadth if found_breadth else None), asof
 
 
+def last_known_bj_mv():
+    """最近一次东财口径的北交所市值（万亿元）：优先数据库快照，其次 state.json。"""
+    try:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT bj_mv FROM snapshots WHERE bj_mv > 0 "
+                "ORDER BY date DESC, ts DESC LIMIT 1").fetchone()
+        if row and row[0]:
+            return float(row[0])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        with open(STATE_JSON, "r", encoding="utf-8") as f:
+            bj = float(((json.load(f).get("market") or {}).get("bj_mv")) or 0)
+        if bj > 0:
+            return bj
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.0
+
+
 def fetch_caps_official():
-    """交易所官方口径兜底：上交所（股票）+ 深交所（股票），返回总市值与成交额（万亿元）。"""
-    date = datetime.datetime.now(CST).strftime("%Y-%m-%d")
-    sse = http_json(SSE_URL.format(date=date), SSE_HEADERS, timeout=10)
-    sse_rows = sse.get("result") or []
-    if not sse_rows:
-        raise RuntimeError("上交所接口无当日数据")
-    sse_row = sse_rows[0]
-    szse = http_json(SZSE_URL.format(date=date), SZSE_HEADERS, timeout=10)
-    szse_rows = (szse[0].get("data") if isinstance(szse, list) and szse else None) or []
-    if not szse_rows:
-        raise RuntimeError("深交所接口无当日数据")
-    szse_row = szse_rows[0]
-    sh = float(sse_row["TOTAL_VALUE"]) / 10000.0
-    sz = float(str(szse_row["sjzz"]).replace(",", "")) / 10000.0
-    # 交易所金额字段单位均为万元，除以 1e8 换算为万亿元（与新浪口径一致）
-    sse_amt = float(sse_row.get("TRADE_AMT") or 0) / 1e8
-    szse_amt = float(str(szse_row.get("cjje") or "0").replace(",", "")) / 1e8
-    if sh <= 0 or sz <= 0:
-        raise RuntimeError("交易所总市值为空")
-    return {"sh": sh, "sz": sz, "bj": 0.0}, sse_amt + szse_amt
+    """交易所官方口径兜底：上交所（股票）+ 深交所（股票）。
+
+    返回 (总市值与成交额(万亿元), 数据日期)。周末/节假日/凌晨没有"当日"数据，
+    自动回溯最近 15 天内最近的有数据交易日，保证兜底在任何时候都可用。
+    """
+    today = datetime.datetime.now(CST).date()
+    for i in range(15):
+        date = (today - datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+        try:
+            sse = http_json(SSE_URL.format(date=date), SSE_HEADERS, timeout=10)
+            sse_rows = sse.get("result") or []
+            szse = http_json(SZSE_URL.format(date=date), SZSE_HEADERS, timeout=10)
+            szse_rows = (szse[0].get("data") if isinstance(szse, list) and szse else None) or []
+        except Exception:  # noqa: BLE001
+            continue
+        if not sse_rows or not szse_rows:
+            continue
+        sse_row = sse_rows[0]
+        szse_row = szse_rows[0]
+        sh = float(sse_row["TOTAL_VALUE"]) / 10000.0
+        sz = float(str(szse_row["sjzz"]).replace(",", "")) / 10000.0
+        # 交易所金额字段单位均为亿元，除以 1e4 换算为万亿元（与新浪口径一致）
+        sse_amt = float(sse_row.get("TRADE_AMT") or 0) / 1e4
+        szse_amt = float(str(szse_row.get("cjje") or "0").replace(",", "")) / 1e4
+        if sh <= 0 or sz <= 0:
+            continue
+        asof = datetime.datetime.strptime(date, "%Y-%m-%d").date()
+        # 北交所市值沿用最近一次东财口径的收盘值，避免兜底口径突变造成读数跳变
+        bj = last_known_bj_mv()
+        if bj > 0:
+            log("北交所市值沿用最近一次取值：%.3f 万亿" % bj)
+        return {"sh": sh, "sz": sz, "bj": bj}, sse_amt + szse_amt, asof
+    raise RuntimeError("交易所官方接口近 15 日无数据")
 
 
 def fetch_caps():
@@ -303,9 +415,9 @@ def fetch_caps():
         caps, breadth, asof = fetch_caps_em()
         return caps, "东方财富", None, breadth, asof
     except Exception as exc:  # noqa: BLE001
-        print("东方财富总市值失败，切换交易所官方：%s" % exc, flush=True)
-        caps, amount = fetch_caps_official()
-        return caps, "交易所官方", amount, None, None
+        log("东方财富总市值失败，切换交易所官方：%s" % exc)
+        caps, amount, asof = fetch_caps_official()
+        return caps, "交易所官方", amount, None, asof
 
 
 def fetch_amount():
@@ -377,6 +489,32 @@ def pct_rank(values, value):
     return round(sum(1 for v in vals if v <= value) / len(vals) * 100, 1)
 
 
+def fetch_rf_datacenter(pages=6):
+    """东财数据中心：中国10年期国债收益率日频序列（约 6×500 个交易日）。"""
+    rows = {}
+    for pn in range(1, pages + 1):
+        payload = http_json(RF_DC_URL % pn, RF_DC_HEADERS, timeout=12)
+        data = ((payload.get("result") or {}).get("data")) or []
+        if not data:
+            break
+        for row in data:
+            d = str(row.get("SOLAR_DATE") or "")[:10]
+            y = row.get("EMM00166466")
+            if not d or y is None:
+                continue
+            try:
+                rows[d] = float(y)
+            except (TypeError, ValueError):
+                pass
+        if len(data) < 500:
+            break
+        time.sleep(0.25)
+    hist = sorted(rows.items())
+    if not hist:
+        raise RuntimeError("国债收益率数据为空")
+    return hist[-1][1], hist
+
+
 def fetch_rf(force=False):
     """10年期国债收益率（%）：现值 + 日频历史 [(date, yld)]。缓存 1 小时，失败用上次缓存。"""
     now = time.time()
@@ -405,6 +543,14 @@ def fetch_rf(force=False):
                 break
         except Exception:  # noqa: BLE001
             continue
+    if not spot or not hist:
+        try:
+            dc_spot, dc_hist = fetch_rf_datacenter()
+            spot = spot or dc_spot
+            if not hist:
+                hist = dc_hist
+        except Exception:  # noqa: BLE001
+            pass
     if spot:
         rf_cache["spot"] = spot
     if hist:
@@ -547,20 +693,22 @@ def breadth_of(breadth):
 
 
 def build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now, sources,
-                rf_auto=None, rf_hist=None, pe_hist=None, breadth=None, asof_date=None):
+                rf_auto=None, rf_hist=None, pe_hist=None, breadth=None, asof_date=None,
+                allow_series_update=True):
     market_date = asof_date or now.date()
     # 主口径：沪深京全 A 总市值，与历史 880001 序列保持一致
     total = caps["sh"] + caps["sz"] + caps["bj"]
     gdp_yi = hist["gdp"].get(str(market_date.year - 1)) or hist["gdp"].get(str(market_date.year - 2))
-    gdp_mv = gdp_yi / 10000.0
-    ratio = round(total / gdp_mv * 100, 2)
+    # 与 rebuild_series_ratios 完全同口径：先定 880001 等价值，再反推证券化率
     idx = round(total * 100, 2)
+    ratio = round(idx * 10000.0 / gdp_yi, 2) if gdp_yi else 0.0
     month = market_date.strftime("%Y-%m")
     series = hist["series"]
-    if series and series[-1][0] == month:
-        series[-1] = [month, ratio, idx]
-    else:
-        series.append([month, ratio, idx])
+    if allow_series_update:
+        if series and series[-1][0] == month:
+            series[-1] = [month, ratio, idx]
+        else:
+            series.append([month, ratio, idx])
 
     percentile = percentile_of(series, ratio)
     pctw = pct_windows(series, ratio)
@@ -661,13 +809,15 @@ def refresh(force_valuation=False):
         with runtime_lock.file_lock(REFRESH_LOCK):
             _refresh(force_valuation)
     except runtime_lock.LockBusy:
-        print("[%s] 另一进程正在刷新，跳过本轮" %
-              datetime.datetime.now(CST).strftime("%H:%M:%S"), flush=True)
+        log("另一进程正在刷新，跳过本轮")
 
 
 def _refresh(force_valuation=False):
     now = datetime.datetime.now(CST)
     hist = load_history()
+    # GDP 一旦新增/修订，历史证券化率立即回溯重算（幂等），再进入本轮计算
+    if rebuild_series_ratios(hist):
+        log("检测到 GDP 更新，历史证券化率已回溯重算")
     cfg = load_config()
     caps, caps_source, official_amount, breadth, asof = fetch_caps()
     market_date = asof or now.date()
@@ -679,7 +829,7 @@ def _refresh(force_valuation=False):
     if amount is None:
         if official_amount is None:
             try:
-                _, official_amount = fetch_caps_official()
+                _, official_amount, _ = fetch_caps_official()
             except Exception:  # noqa: BLE001
                 official_amount = None
         amount = official_amount
@@ -703,9 +853,13 @@ def _refresh(force_valuation=False):
         "pools": zt is not None and dt is not None,
     }
     record_breadth(market_date, now, breadth_of(breadth))
+    # 兜底口径若连北交所市值也拿不到，本轮只展示不写入历史序列，避免污染分位与阈值
+    allow_series_update = not (caps_source != "东方财富" and (caps.get("bj") or 0) <= 0)
+    if not allow_series_update:
+        log("北交所市值缺失，本轮不回写历史序列")
     snap = build_state(caps, amount, zt, dt, valuation, top10, hist, cfg, now, sources,
                        rf_auto=rf_auto, rf_hist=rf_hist, pe_hist=pe_hist, breadth=breadth,
-                       asof_date=market_date)
+                       asof_date=market_date, allow_series_update=allow_series_update)
     date = market_date.strftime("%Y-%m-%d")
 
     # 写入历史文件
@@ -752,10 +906,9 @@ def _refresh(force_valuation=False):
         conn.execute("DELETE FROM snapshots WHERE date < ?",
                      ((now - datetime.timedelta(days=30)).strftime("%Y-%m-%d"),))
         recent = conn.execute("SELECT id,ts,level,ratio,message FROM alerts ORDER BY id DESC LIMIT 8").fetchall()
+        # 只在该交易日写入快照，因此这里无需再按盘中时段过滤（午休/收盘后启动也能出曲线）
         rows = conn.execute(
-            "SELECT ts,ratio FROM snapshots WHERE date=? "
-            "AND (substr(ts,12,5) BETWEEN '09:15' AND '11:35' "
-            "OR substr(ts,12,5) BETWEEN '12:55' AND '15:05') ORDER BY id", (date,)).fetchall()
+            "SELECT ts,ratio FROM snapshots WHERE date=? ORDER BY id", (date,)).fetchall()
         # 同分钟多进程重复写入的历史样本按分钟去重，避免盘中曲线出现锯齿/重复点
         minute = {}
         for ts, ratio in rows:
@@ -771,15 +924,12 @@ def _refresh(force_valuation=False):
         state_text = json.dumps(state, ensure_ascii=False)
         data_text = "window.BUFFETT_DATA = " + json.dumps(
             state, ensure_ascii=False, separators=(",", ":")) + ";\n"
-    with open(STATE_JSON, "w", encoding="utf-8") as f:
-        f.write(state_text)
-    # data.js 输出完整快照，公网静态页在无本地 API 时也能展示估值/市场/预警等模块
-    with open(DATA_JS, "w", encoding="utf-8") as f:
-        f.write(data_text)
-    print("[%s] %.4f万亿 | %.2f%% | 分位%.1f%% | 涨停%s 跌停%s | 源:%s/%s%s" %
-          (snap["updated"], snap["market"]["total_mv"], snap["ratio"],
-           snap["percentile"], zt, dt, caps_source, amount_source,
-           "" if is_current else " | 非交易日，仅更新展示"), flush=True)
+    atomic_write(STATE_JSON, state_text)
+    # data.js 输出完整快照，双击 HTML（file://）打开时页面也能读到完整数据
+    atomic_write(DATA_JS, data_text)
+    log("%.4f万亿 | %.2f%% | 分位%.1f%% | 涨停%s 跌停%s | 源:%s/%s%s" %
+        (snap["market"]["total_mv"], snap["ratio"], snap["percentile"], zt, dt,
+         caps_source, amount_source, "" if is_current else " | 非交易日，仅更新展示"))
 
 
 def loop():
@@ -789,7 +939,8 @@ def loop():
             refresh()
         except Exception as exc:  # noqa: BLE001
             ok = False
-            print("[%s] 刷新失败：%s" % (datetime.datetime.now(CST).strftime("%H:%M:%S"), exc), flush=True)
+            log("刷新失败：%s" % exc)
+        HEARTBEAT["refresh"] = time.time()
         if not ok:
             time.sleep(15)
         else:
@@ -800,14 +951,44 @@ def indices_loop():
     while True:
         try:
             payload = indices_engine.get_payload(force=True)
-            with open(os.path.join(BASE, "indices.js"), "w", encoding="utf-8") as f:
-                f.write("window.INDEX_DATA = " +
-                        json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";\n")
-            print("[%s] 指数全景已更新：%d 个指数" %
-                  (datetime.datetime.now(CST).strftime("%H:%M:%S"), len(payload["indices"])))
+            atomic_write(os.path.join(BASE, "indices.js"),
+                         "window.INDEX_DATA = " +
+                         json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";\n")
+            log("指数全景已更新：%d 个指数" % len(payload["indices"]))
         except Exception as exc:  # noqa: BLE001
-            print("指数全景刷新失败：%s" % exc, flush=True)
-        time.sleep(600 if in_trading_hours() else 1800)
+            log("指数全景刷新失败：%s" % exc)
+        HEARTBEAT["indices"] = time.time()
+        time.sleep(300 if in_trading_hours() else 1800)
+
+
+def _start_thread(name, target):
+    HEARTBEAT[name] = time.time()
+    t = threading.Thread(target=target, daemon=True, name=name)
+    THREADS[name] = t
+    t.start()
+
+
+def guard_loop():
+    """自愈守护：后台线程退出或长时间无心跳时重新拉起。
+
+    历史事故：stdout 管道断开导致 print 抛出 OSError，刷新线程静默死亡，
+    HTTP 服务仍在但数据停更。这里按心跳兜底，确保不会再长期停更。
+    """
+    while True:
+        time.sleep(60)
+        now = time.time()
+        trading = in_trading_hours()
+        for name, target, interval in (
+                ("refresh", loop, 30 if trading else 300),
+                ("indices", indices_loop, 300 if trading else 1800)):
+            t = THREADS.get(name)
+            if t is None or not t.is_alive():
+                log("后台线程 %s 已退出，自动重启" % name)
+                _start_thread(name, target)
+            elif now - HEARTBEAT.get(name, 0) > interval * 2 + 180:
+                log("后台线程 %s 超过 %.0f 秒无心跳，重新拉起" %
+                    (name, now - HEARTBEAT.get(name, 0)))
+                _start_thread(name, target)
 
 
 # ---------- HTTP ----------
@@ -829,13 +1010,36 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store, max-age=0")
         super().end_headers()
 
+    def _cors(self):
+        # 允许双击 HTML（file:// 来源）直接访问本地接口，保证视图同样能自动同步
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Access-Control-Request-Private-Network")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+
+    def _origin_allowed(self):
+        # 写操作（POST）的来源校验：只放行本机页面与双击 HTML（file://，Origin 为 null）。
+        # 公网网页借浏览器发起的跨站写请求（CSRF）在此被拒，防止任意改写阈值配置或触发强制刷新。
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True  # 非浏览器客户端（脚本/curl）不带 Origin
+        if origin == "null":
+            return True  # file:// 页面
+        return origin in ("http://127.0.0.1:%d" % PORT, "http://localhost:%d" % PORT)
+
     def _json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
 
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -879,6 +1083,9 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path != "/api/config":
             self._json({"ok": False, "error": "not found"}, 404)
+            return
+        if not self._origin_allowed():
+            self._json({"ok": False, "error": "origin not allowed"}, 403)
             return
         length = int(self.headers.get("Content-Length") or 0)
         try:
@@ -948,7 +1155,7 @@ def main():
         with state_lock:
             state.clear()
             state.update(cached)
-        print("已载入上次快照：%s" % cached.get("updated", ""), flush=True)
+        log("已载入上次快照：%s" % cached.get("updated", ""))
     else:
         try:
             hist = load_history()
@@ -956,14 +1163,14 @@ def main():
                 state.update({"series": hist.get("series", []), "gdp": hist.get("gdp", {}),
                               "cur": hist.get("cur", 0), "ready": False})
         except Exception as exc:  # noqa: BLE001
-            print("历史数据读取失败：%s" % exc)
+            log("历史数据读取失败：%s" % exc)
 
     # 单实例锁：Windows 下 SO_REUSEADDR 允许多个进程绑定同一端口，必须用文件锁兜底
     try:
         with runtime_lock.file_lock(INSTANCE_LOCK):
             _serve()
     except runtime_lock.LockBusy:
-        print("已有实例在运行，本次启动退出：http://127.0.0.1:%d/" % PORT, flush=True)
+        log("已有实例在运行，本次启动退出：http://127.0.0.1:%d/" % PORT)
 
 
 def _serve():
@@ -971,15 +1178,17 @@ def _serve():
     try:
         server = QuietServer(("127.0.0.1", PORT), Handler)
     except OSError:
-        print("端口 %d 已被占用，看板可能已在运行：http://127.0.0.1:%d/" % (PORT, PORT), flush=True)
+        log("端口 %d 已被占用，看板可能已在运行：http://127.0.0.1:%d/" % (PORT, PORT))
         return
 
-    threading.Thread(target=loop, daemon=True).start()
-    threading.Thread(target=indices_loop, daemon=True).start()
+    _start_thread("refresh", loop)
+    # 指数重建较慢，延迟启动让首页和 /api/indices 优先用磁盘缓存立即响应
+    threading.Timer(8.0, lambda: _start_thread("indices", indices_loop)).start()
+    threading.Thread(target=guard_loop, daemon=True, name="guard").start()
     url = "http://127.0.0.1:%d/" % PORT
     if not os.environ.get("BUFFETT_NO_BROWSER"):
         threading.Timer(1.0, lambda: __import__("webbrowser").open(url)).start()
-    print("看板已启动：%s（关闭窗口即停止）" % url, flush=True)
+    log("看板已启动：%s（关闭窗口即停止）" % url)
     server.serve_forever()
 
 

@@ -26,6 +26,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Run unit tests
+        run: python test_calcs.py
       - name: Fetch data
         run: python scripts/fetch_once.py
       - name: Build static site
@@ -53,7 +55,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${ steps.deployment.outputs.page_url }
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4

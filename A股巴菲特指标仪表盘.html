@@ -175,6 +175,9 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
 .help-btn:hover{border-color:var(--blue);color:var(--blue)}
 .help-box{display:none;margin:-4px 0 14px;padding:10px 14px;border-left:3px solid var(--blue);border-radius:0 10px 10px 0;background:var(--blue-soft);font-size:12.5px;color:var(--ink2);line-height:1.8}
 .help-box.on{display:block}
+.tip-btn{width:14px;height:14px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--faint);font-size:9.5px;font-weight:700;cursor:pointer;line-height:1;padding:0;margin-left:5px;vertical-align:middle;font-family:inherit}
+.tip-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-soft)}
+.tip-pop{position:fixed;z-index:80;display:none;max-width:290px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);box-shadow:0 14px 34px -14px rgba(12,21,36,.45);font-size:12px;line-height:1.75;color:var(--ink2);pointer-events:none}
 .layer-title{font-size:14px;font-weight:700;color:var(--ink2);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
 .layer-title:before{content:"";width:3px;height:14px;border-radius:2px;background:var(--blue)}
 .idx-card{transition:transform .15s ease,box-shadow .15s ease}
@@ -240,10 +243,10 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     <div class="help-box">这个百分比 = A股总市值 ÷ 上一年 GDP。数值越高，说明股票整体越贵；越低越便宜。</div>
     <p class="lede">口径：总市值 = 上证指数 + 深证综指 + 北证50（东方财富 f20）；880001 等价值 = 总市值 × 100；分母为前一年度 GDP。</p>
     <div class="kpis">
-      <div class="kpi"><div class="t">A股总市值</div><div class="v" id="kMv">--</div><div class="d" id="kMvD">沪 / 深 / 北交所</div></div>
-      <div class="kpi"><div class="t">分母 GDP</div><div class="v" id="kGdp">--</div><div class="d" id="kGdpD">上一年度 · TTM 口径见下</div></div>
-      <div class="kpi"><div class="t">历史分位</div><div class="v" id="kPct">--</div><div class="d" id="kPctD">182 个月样本</div></div>
-      <div class="kpi"><div class="t">距高估线</div><div class="v" id="kHigh">--</div><div class="d" id="kHighD">阈值可配置</div></div>
+      <div class="kpi"><div class="t">A股总市值<button class="tip-btn" type="button" data-tip="沪市 + 深市 + 北交所的总市值之和（东方财富 f20），单位万亿元。含限售股，是全市场口径，不是流通市值。">?</button></div><div class="v" id="kMv">--</div><div class="d" id="kMvD">沪 / 深 / 北交所</div></div>
+      <div class="kpi"><div class="t">分母 GDP<button class="tip-btn" type="button" data-tip="用上一年度全国现价 GDP（国家统计局口径）。当年 GDP 尚未公布，所以主读数固定滞后一年；TTM 口径为估算值，只作参考。">?</button></div><div class="v" id="kGdp">--</div><div class="d" id="kGdpD">上一年度 · TTM 口径见下</div></div>
+      <div class="kpi"><div class="t">历史分位<button class="tip-btn" type="button" data-tip="当前读数在 2011 年 10 月以来所有月末读数中的位置。76.4% 表示历史上约四分之三的月份比现在便宜。">?</button></div><div class="v" id="kPct">--</div><div class="d" id="kPctD">182 个月样本</div></div>
+      <div class="kpi"><div class="t">距高估线<button class="tip-btn" type="button" data-tip="当前读数减去高估线。正数代表已超出多少个百分点，负数代表还差多少。高估线可在 07 区修改，或切换为滚动模式自动调整。">?</button></div><div class="v" id="kHigh">--</div><div class="d" id="kHighD">阈值可配置</div></div>
     </div>
     <div class="card gauge">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:34px">
@@ -300,10 +303,10 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
         <div class="chart-box" id="intraChart" style="height:260px"></div>
       </div>
       <div class="stat" style="display:flex;flex-direction:column;justify-content:center">
-        <div class="k">盘中区间</div>
+        <div class="k">盘中区间<button class="tip-btn" type="button" data-tip="当日盘中证券化率的最低到最高值，反映日内波动幅度；末笔是最后一笔快照的读数。">?</button></div>
         <div class="v" id="intraRange">--</div>
         <div class="d" id="intraMeta">--</div>
-        <div class="note" style="margin-top:16px">盘中快照只保留 30 天；仅记录交易时段 09:15–11:35、12:55–15:05。</div>
+        <div class="note" style="margin-top:16px">盘中快照只保留 30 天；记录时段 09:15–11:35、12:55–15:05。顶部「当前读数」取最新一次抓取，与盘中末笔可能因行情源延迟存在小幅差异。</div>
       </div>
     </div>
   </section>
@@ -311,20 +314,10 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
   <section id="sec-valuation">
     <h2><span class="num">04</span>估值组合<button class="help-btn" type="button">?</button></h2>
     <div class="help-box">PE 是股价相对公司盈利的倍数，历史分位越低越便宜；ERP 是股票相对国债的性价比，越高越划算。</div>
-    <p class="lede">单看市值/GDP 容易误判，配合 PE、PB 分位与股债性价比交叉验证。</p>
-    <div class="three">
-      <div class="stat" id="valHs300">
-        <div class="k">沪深300</div><div class="v" id="hs300Pe">--</div><div class="d" id="hs300Meta">--</div>
-        <div class="bar"><i id="hs300Bar" style="width:0"></i><b style="left:50%"></b></div>
-        <div class="d" id="hs300Pct" style="margin-top:6px">--</div>
-      </div>
-      <div class="stat" id="valZz500">
-        <div class="k">中证500</div><div class="v" id="zz500Pe">--</div><div class="d" id="zz500Meta">--</div>
-        <div class="bar"><i id="zz500Bar" style="width:0"></i><b style="left:50%"></b></div>
-        <div class="d" id="zz500Pct" style="margin-top:6px">--</div>
-      </div>
+    <p class="lede">单看市值/GDP 容易误判，配合 11 个宽基与风格指数的 PE、PB 分位、股债性价比交叉验证。</p>
+    <div class="three" id="valGrid">
       <div class="stat">
-        <div class="k">股债性价比 ERP</div><div class="v" id="erpVal">--</div><div class="d" id="erpMeta">--</div>
+        <div class="k">股债性价比 ERP<button class="tip-btn" type="button" data-tip="ERP = 1/PE − 10 年期国债收益率。数值越高，股票相对债券越划算；分位条越靠右越便宜，方向与 PE 相反。">?</button></div><div class="v" id="erpVal">--</div><div class="d" id="erpMeta">--</div>
         <div class="bar"><i id="erpBar" style="width:0"></i><b style="left:50%"></b></div>
         <div class="d" id="erpPct" style="margin-top:6px">--</div>
         <div class="note" style="margin-top:12px;border-left-color:var(--blue);background:var(--blue-soft)">ERP = 1/PE − 10 年期国债收益率（自动抓取）。历史分位越高，股票相对债券越便宜；高于 80% 为历史级机会区，低于 20% 说明股票相对债券偏贵。注意：ERP 分位条越靠右越便宜，与上方 PE 分位条方向相反。</div>
@@ -337,14 +330,14 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     <div class="help-box">成交额代表资金活跃度，涨停/跌停代表情绪。成交额放大、涨停多，通常说明资金在进场。<br><b>市场宽度</b>看的是全市场涨跌家数的分布：涨的家数远多于跌的，说明行情是普涨（赚钱效应好）；指数在涨但下跌家数居多，说明只是少数权重股在拉，赚钱效应差。</div>
     <p class="lede">估值告诉你“贵不贵”，资金与情绪告诉你“撑不撑得住”。</p>
     <div class="four">
-      <div class="stat"><div class="k">两市成交额</div><div class="v" id="mAmount">--</div><div class="d">沪 + 深，单位万亿元</div></div>
-      <div class="stat"><div class="k">涨停 / 跌停</div><div class="v" id="mZt">--</div><div class="d" id="mZtD">涨跌停比</div></div>
-      <div class="stat"><div class="k">前十大权重集中度</div><div class="v" id="mTop10">--</div><div class="d" id="mTop10D">--</div></div>
-      <div class="stat"><div class="k">北交所占比</div><div class="v" id="mBj">--</div><div class="d">不含则口径略有差异</div></div>
+      <div class="stat"><div class="k">两市成交额<button class="tip-btn" type="button" data-tip="沪市 + 深市当日成交金额合计，单位万亿元。反映资金活跃度，放量通常意味着分歧加大或趋势加速。">?</button></div><div class="v" id="mAmount">--</div><div class="d">沪 + 深，单位万亿元</div></div>
+      <div class="stat"><div class="k">涨停 / 跌停<button class="tip-btn" type="button" data-tip="全市场当日涨停与跌停家数。涨停多偏热、跌停多偏恐慌，是短线情绪的温度计。">?</button></div><div class="v" id="mZt">--</div><div class="d" id="mZtD">涨跌停比</div></div>
+      <div class="stat"><div class="k">前十大权重集中度<button class="tip-btn" type="button" data-tip="总市值最大的 10 只个股占全 A 总市值的比重。越高说明指数越容易被少数权重股左右。">?</button></div><div class="v" id="mTop10">--</div><div class="d" id="mTop10D">--</div></div>
+      <div class="stat"><div class="k">北交所占比<button class="tip-btn" type="button" data-tip="北交所总市值 ÷ 全 A 总市值。占比很小，但决定口径含不含北交所。">?</button></div><div class="v" id="mBj">--</div><div class="d">不含则口径略有差异</div></div>
     </div>
     <div class="card breadth-card" id="brCard" role="button" tabindex="0" aria-expanded="false" aria-controls="brDetail">
       <div class="breadth-head">
-        <b>市场宽度 · 涨跌家数</b>
+        <b>市场宽度 · 涨跌家数</b><button class="tip-btn" type="button" data-tip="上涨家数占全市场比重。过半说明普涨、赚钱效应好；指数在涨但下跌家数多，说明只是少数权重股在拉。">?</button>
         <span class="tag mid" id="brMood">--</span>
       </div>
       <div class="gtrack" id="brTrack">
@@ -399,9 +392,9 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
       <div class="card">
         <div class="form-grid">
           <div><label class="f">模式</label><select class="f" id="cfgMode"><option value="fixed">固定阈值</option><option value="rolling">滚动 5 年均值 ±1σ</option></select></div>
-          <div><label class="f">低估线 %</label><input class="f" id="cfgLow" type="number" step="0.01"></div>
-          <div><label class="f">均值 / 中轴 %</label><input class="f" id="cfgMid" type="number" step="0.01"></div>
-          <div><label class="f">高估线 %</label><input class="f" id="cfgHigh" type="number" step="0.01"></div>
+          <div><label class="f">低估线 %<button class="tip-btn" type="button" data-tip="低于这条线视为历史低估区。固定模式由你设定；滚动模式自动取近 60 个月均值 −1 个标准差。">?</button></label><input class="f" id="cfgLow" type="number" step="0.01"></div>
+          <div><label class="f">均值 / 中轴 %<button class="tip-btn" type="button" data-tip="估值中枢。固定模式取 2011–2026 年读数均值；滚动模式取最近 60 个月均值，随行情平移。">?</button></label><input class="f" id="cfgMid" type="number" step="0.01"></div>
+          <div><label class="f">高估线 %<button class="tip-btn" type="button" data-tip="高于这条线视为历史高估区。滚动模式为近 60 个月均值 +1 个标准差，会随市场整体抬升而上移。">?</button></label><input class="f" id="cfgHigh" type="number" step="0.01"></div>
           <div><label class="f">无风险利率 %（自动获取失败时兜底）</label><input class="f" id="cfgRf" type="number" step="0.01"></div>
           <div><label class="f">TTM GDP（万亿）</label><input class="f" id="cfgTtm" type="number" step="0.01"></div>
           <div><label class="f">滚动窗口（月）</label><input class="f" id="cfgWin" type="number" step="1"></div>
@@ -421,7 +414,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
     <div class="card" style="margin-top:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <b style="font-size:13px">预警历史复盘 · 触发后市场表现</b>
+        <b style="font-size:13px">预警历史复盘 · 触发后市场表现<button class="tip-btn" type="button" data-tip="把历史上每次“读数首次进入高估/低估区”当成一次事件，统计此后 3、6、12 个月总市值（880001 等价值）的涨跌。胜率＝上涨次数占样本比例。样本 5–9 次偏少，单次结果偶然性大；且 A股历史区间有限，只能作参考，不构成交易建议。">?</button></b>
         <span id="btRule" style="font-size:11px;color:var(--faint)">--</span>
       </div>
       <div class="metric-note" id="btNote" style="padding-left:0">--</div>
@@ -464,11 +457,12 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
 
   <section id="sec-indices">
     <h2><span class="num">09</span>指数全景<button class="help-btn" type="button">?</button></h2>
-    <div class="help-box">把 14 个指数放在一起比：涨得多不多、贵不贵、稳不稳。PE/PB 来自蛋卷；上证 PE 用上交所官方、PB 按沪市前 300 只估算；北证50 按市值前 50 估算。综合评分 = 40% 趋势 + 30% 估值 + 30% 风险，分数越高只代表相对更优，不是买卖建议。</div>
+    <div class="help-box">把 16 个指数放在一起比：涨得多不多、贵不贵、稳不稳。PE/PB 来自蛋卷；上证 PE 用上交所官方、PB 按沪市前 300 只估算；北证50 按市值前 50 估算；恒生指数与恒生科技为港股对照，不参与 A 股相关性与综合排名。综合评分 = 40% 趋势 + 30% 估值 + 30% 风险，分数越高只代表相对更优，不是买卖建议。</div>
     <p class="lede">先看三大指数，再看宽基梯队，最后看行业分组；点任意卡片可展开详情。</p>
+    <div class="lede" id="idxFresh" style="margin-top:-8px;font-size:11px"></div>
     <div class="four" id="idxSummary"></div>
     <div class="combo-banner" id="comboBanner" style="display:none"></div>
-    <div class="metric-note" style="margin-top:10px">评分 = 40% 趋势 + 30% 估值 + 30% 风险；趋势看近 1 月/近 3 月涨跌和均线排列，估值看 PE 历史分位，风险看波动与回撤。分数越高表示相对更强、更便宜、更稳，是 14 个指数的横向排名，不是买卖建议。</div>
+    <div class="metric-note" style="margin-top:10px">评分 = 40% 趋势 + 30% 估值 + 30% 风险；趋势看近 1 月/近 3 月涨跌和均线排列，估值看 PE 历史分位，风险看波动与回撤。分数越高表示相对更强、更便宜、更稳，是 16 个指数的横向排名，不是买卖建议。港股两项仅作对照。</div>
 
     <h3 class="layer-title">三大指数 · 单独评估</h3>
     <div class="three" id="bigThree"></div>
@@ -517,10 +511,15 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     </div>
   </section>
 
+  <div class="card" id="openHint" style="display:none;border-color:var(--amber);background:rgba(180,83,9,.07)">
+    <b style="font-size:13px">当前是文件方式打开，本地实时接口不可用</b>
+    <div class="d" style="margin-top:6px;line-height:1.85">双击 HTML 文件时，浏览器无法访问本地服务，页面只能用公网行情与静态快照。要拿到 30 秒刷新，请改用 <a href="http://127.0.0.1:8787/" style="color:var(--blue);font-weight:600">http://127.0.0.1:8787/</a> 打开（需先启动实时看板）。</div>
+  </div>
+
   <section id="sec-status">
     <div class="four">
       <div class="stat"><div class="k">最后更新</div><div class="v sm" id="stUpdated">--</div><div class="d">Asia/Shanghai</div></div>
-      <div class="stat"><div class="k">刷新频率</div><div class="v">本机 30 秒 / 盘后 5 分</div><div class="d">公网页面内每 30 分钟拉取实时行情</div></div>
+      <div class="stat"><div class="k">刷新频率</div><div class="v" id="stFreq">检测中</div><div class="d" id="stFreqD">正在探测本地服务</div></div>
       <div class="stat"><div class="k">数据源</div><div class="v sm" id="stSource">--</div><div class="d" id="stSourceD">总市值 / 估值 / 情绪</div></div>
       <div class="stat"><div class="k">运行状态</div><div class="v" id="stState">检测中</div><div class="d" id="stStateD">本地实时 · 公网快照</div></div>
     </div>
@@ -531,7 +530,7 @@ footer{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-si
     1. 总市值 = 上证指数 + 深证综指 + 北证50 总市值（东方财富 f20），880001 等价值 = 总市值 × 100。<br>
     2. GDP 取国家统计局年度现价 GDP；TTM 口径为可配置估算值。<br>
     3. 阈值参考 2011–2026 统计（均值 ±20%），可在预警区改为滚动均值 ±1σ。<br>
-    4. 曲线为月末值，共 182 个月；当前读数由本地服务或公网页面内实时行情（每 30 分钟）更新。<br>
+    4. 曲线为月末值，共 182 个月；本地服务访问时每 30 秒更新，公网/文件打开时页面内交易时段每 5 分钟、非交易时段每 30 分钟拉取行情。<br>
     5. 本页仅做数据展示与计算，不构成投资建议。
   </footer>
 </div>
@@ -557,7 +556,11 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     document.head.appendChild(s);
   }
   var D = window.BUFFETT_DATA || null;
+  // 双击 HTML（file://）时本地服务地址是绝对路径；经服务访问时用相对路径
+  var API_BASE = (location.protocol==='file:') ? 'http://127.0.0.1:8787/' : '';
+  function apiURL(p){ return API_BASE + p; }
   var API = null;
+  var probed = false; // 本地 api/data 是否已完成首次探测，用于区分"检测中"与"静态快照"
   var LIVE = null; // 公网页面内实时行情：东方财富沪深京总市值
   var lastLiveTry = 0;
   var charts = { main:null, intra:null, idx:null, detail:null, wide:null, pe:null, breadth:null };
@@ -591,6 +594,8 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     var n=new Date(Date.now()+8*3600*1000);
     return n.getUTCFullYear()+'-'+pad2(n.getUTCMonth()+1)+'-'+pad2(n.getUTCDate());
   }
+  // 公网模式拉取间隔：交易时段 5 分钟，非交易时段 30 分钟
+  function liveIntervalMs(){ return marketOpenNow()?5*60*1000:30*60*1000; }
   function gdpLatest(){ var s=series(); if(!s.length) return 0; return gdpFor(Number(s[s.length-1][0].slice(0,4)))||0; }
   function applyLive(mv){
     var g=gdpLatest();
@@ -617,7 +622,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   function fetchLive(){
     if(API) return;
     var now=Date.now();
-    if(now-lastLiveTry<60000) return;
+    if(now-lastLiveTry<liveIntervalMs()) return;
     lastLiveTry=now;
     var url='https://push2.eastmoney.com/api/qt/ulist.np/get?secids=1.000001,0.399106,0.899050&fields=f20';
     var ctrl=(window.AbortController)?new AbortController():null;
@@ -710,7 +715,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     }
     var labTxt='当前读数 · '+(S.asof||'--');
     if(API) labTxt+=((marketOpenNow()&&S.asof===cstDateStr())?' · 实时':' · 最新快照');
-    else if(LIVE) labTxt='当前读数 · 实时行情 '+hmText(LIVE.ts);
+    else if(LIVE) labTxt='当前读数 · 实时行情 '+fullTime(LIVE.ts).slice(5,16);
     else labTxt+=' · 静态快照';
     $('updLabel').textContent=labTxt;
     $('kPct').textContent=(API?API.percentile:percentile(v)).toFixed(1)+'%';
@@ -781,22 +786,36 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
       +'%，中位 '+fmt(band.p50,1)+'%。分位越高表示相对历史越贵：80% 以上属历史偏贵区，20% 以下属历史偏便宜区。';
   }
 
+  function renderValExtra(){
+    var box=$('valGrid'); if(!box) return;
+    var src=(IDX&&IDX.indices)||[];
+    var picks=['sh000001','sz399001','sh000688','sh000300','sh000905','sz399006','sh000852','sh000922','sz399986','hkHSI','hkHSTECH'];
+    var html=[];
+    for(var i=0;i<picks.length;i++){
+      var it=null;
+      for(var j=0;j<src.length;j++){ if(src[j].code===picks[i]){ it=src[j]; break; } }
+      if(!it||!it.valuation||it.valuation.pe==null) continue;
+      var v=it.valuation;
+      var pct=v.pe_pct;
+      var zone=pct==null?'—':(pct<30?'便宜':pct<70?'正常':'偏贵');
+      var w=pct==null?0:Math.max(0,Math.min(100,pct));
+      html.push('<div class="stat val-dyn"><div class="k">'+it.name
+        +'<button class="tip-btn" type="button" data-tip="'+it.name+'：PE 越低越便宜，分位条越靠左说明相对历史越便宜；股息率可作为价值风格的辅助参考。上证、北证50 没有历史 PE 序列，因此不显示分位。">?</button></div>'
+        +'<div class="v">PE '+v.pe+' · PB '+v.pb+'</div>'
+        +'<div class="d">'+(v.dy!=null?'股息率 '+v.dy+'% · ':'')+'当前 '+zone+'</div>'
+        +'<div class="bar"><i style="width:'+w+'%"></i><b style="left:50%"></b></div>'
+        +'<div class="d" style="margin-top:6px">'+(pct==null?'数据源只提供当日 PE，无历史序列':'PE 历史分位 '+pct+'%（PB '+(v.pb_pct==null?'—':v.pb_pct)+'%）')+'</div></div>');
+    }
+    var olds=box.querySelectorAll('.val-dyn');
+    for(var k=0;k<olds.length;k++){ olds[k].parentNode.removeChild(olds[k]); }
+    box.insertAdjacentHTML('afterbegin', html.join(''));
+  }
+
   function renderValuation(){
+    renderValExtra();
     var S=API||D;
     if(!S || !S.valuation) return;
-    var h=S.valuation.hs300, z=S.valuation.zz500;
-    if(h){
-      $('hs300Pe').textContent='PE '+h.pe+' · PB '+h.pb;
-      $('hs300Meta').textContent='股息率 '+h.dy+'% · PE 分位 '+h.pe_pct+'%';
-      $('hs300Bar').style.width=Math.max(0,Math.min(100,h.pe_pct))+'%';
-      $('hs300Pct').textContent='PE 历史分位 '+h.pe_pct+'%（PB '+h.pb_pct+'%）';
-    }
-    if(z){
-      $('zz500Pe').textContent='PE '+z.pe+' · PB '+z.pb;
-      $('zz500Meta').textContent='股息率 '+z.dy+'% · PE 分位 '+z.pe_pct+'%';
-      $('zz500Bar').style.width=Math.max(0,Math.min(100,z.pe_pct))+'%';
-      $('zz500Pct').textContent='PE 历史分位 '+z.pe_pct+'%（PB '+z.pb_pct+'%）';
-    }
+    var h=S.valuation.hs300;
     if(S.erp!=null&&h){
       $('erpVal').textContent=S.erp.toFixed(2)+'%';
       $('erpMeta').textContent='1/PE '+(100/h.pe).toFixed(2)+'% − 10Y国债 '+S.rf.toFixed(2)+'%（'+(S.rf_source||'配置值')+'）';
@@ -822,8 +841,9 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     }else{
       $('mZtD').textContent='涨跌停数据暂不可用';
     }
-    $('mTop10').textContent=fmt(m.top10,1)+'%';
-    $('mTop10D').textContent=m.top10_names&&m.top10_names.length?m.top10_names.slice(0,3).join(' / '):'前十大个股合计';
+    var hasTop10=m.top10_names&&m.top10_names.length;
+    $('mTop10').textContent=hasTop10?fmt(m.top10,1)+'%':'--';
+    $('mTop10D').textContent=hasTop10?m.top10_names.slice(0,3).join(' / '):'行情源暂不可用';
     $('mBj').textContent=fmt(m.bj_share,2)+'%';
     $('methodBj').textContent=fmt(m.bj_share,2)+'%';
     $('methodTtm').textContent=S.ttm?fmt(S.ttm.gdp,2):'--';
@@ -836,11 +856,21 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     var live=!!(API&&API.breadth);
     var b=(API&&API.breadth)||(D&&D.breadth);
     if(!b||!b.total){
+      // 实时涨跌家数缺失时，退回历史序列最后一个交易日的真实收盘值
+      var meta=brHistMeta(), rows=(meta&&meta.rows)||[], r=rows[rows.length-1];
+      if(r&&Number(r[2])>0){
+        var up=Number(r[1]), tot=Number(r[2]), flat=Number(r[3])||0;
+        var down=Math.max(tot-up-flat,0), pct=up/tot*100, mm=brMoodOf(pct);
+        b={up:up,down:down,flat:flat,total:tot,pct:pct,
+           adv_ratio:down?Math.round(up/down*100)/100:null,mood:mm.mood,level:mm.level,_asof:r[0]};
+      }
+    }
+    if(!b||!b.total){
       mood.textContent='数据暂不可用'; mood.className='tag mid';
       $('brUp').style.width='0'; $('brFlat').style.width='0'; $('brDown').style.width='0';
       $('brUp').textContent=''; $('brDown').textContent='';
       $('brLabels').innerHTML='<span class="bl" style="left:0">上涨 —</span><span style="left:50%">平盘 —</span><span class="br" style="left:100%">下跌 —</span>';
-      $('brNow').textContent='需要本地实时服务提供涨跌家数；静态快照不含该字段。';
+      $('brNow').textContent='行情源暂不可用（东方财富涨跌家数接口），且无历史快照。';
       return;
     }
     var t=b.total||1;
@@ -870,7 +900,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     });
     $('brNow').innerHTML='<span>涨跌比 <b>'+(b.adv_ratio!=null?b.adv_ratio+' : 1':'—')+'</b></span><span>全市场 '+b.total+' 只</span>'+
       '<span>涨家占比 '+(b.pct>=50?'高于':'低于')+'半数 → 赚钱效应'+(b.pct>=50?'较好':'偏弱')+'</span>'+
-      (live?'':'<span style="color:var(--amber)">快照值 · 非实时</span>');
+      (live?'':('<span style="color:var(--amber)">'+(b._asof?b._asof+' 收盘快照':'快照值 · 非实时')+'</span>'));
   }
 
   function brMoodOf(p){
@@ -1093,11 +1123,21 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     if(!API){
       var st=$('stState');
       if(LIVE){
-        st.textContent='实时行情 · 30 分钟刷新'; st.style.color='var(--green)';
+        var iv=liveIntervalMs(), liveMin=Math.round(iv/60000);
+        st.textContent='实时行情 · '+liveMin+' 分钟刷新'; st.style.color='var(--green)';
         $('stSource').textContent='东方财富 · 实时';
         $('stSourceD').textContent='沪深京总市值 · 页面内自动拉取';
-        var nextIn=Math.max(0,Math.round((LIVE.ts.getTime()+30*60000-Date.now())/60000));
+        var nextIn=Math.max(0,Math.round((LIVE.ts.getTime()+iv-Date.now())/60000));
         $('stStateD').textContent='下次自动刷新 '+(nextIn<=0?'<1':nextIn)+' 分钟后';
+        $('stFreq').textContent='页面内 '+liveMin+' 分钟';
+        $('stFreqD').textContent=marketOpenNow()?'公网模式 · 交易时段 5 分钟':'公网模式 · 非交易时段 30 分钟';
+      }else if(!probed){
+        st.textContent='检测中'; st.style.color='var(--mut)';
+        $('stSource').textContent='检测中';
+        $('stSourceD').textContent='正在读取本地数据';
+        $('stStateD').textContent='正在探测本地服务';
+        $('stFreq').textContent='检测中';
+        $('stFreqD').textContent='正在探测本地服务';
       }else{
         var late=(age!=null&&age>45&&tradingNow());
         st.textContent=late?('快照延迟 '+age+' 分钟'):'静态快照';
@@ -1105,6 +1145,8 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
         $('stSource').textContent='data.js 快照';
         $('stSourceD').textContent='本地服务 / 构建脚本生成';
         $('stStateD').textContent='本地实时 · 公网快照';
+        $('stFreq').textContent='跟随快照更新';
+        $('stFreqD').textContent='data.js 由构建脚本生成';
       }
       return;
     }
@@ -1112,9 +1154,13 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
       $('stSource').textContent=API.sources.caps+' · 蛋卷';
       $('stSourceD').textContent='成交额：'+API.sources.amount+(API.sources.pools?' · 涨跌停正常':' · 涨跌停不可用');
     }
+    $('stStateD').textContent='本地服务 · 数据实时更新';
+    $('stFreq').textContent='本机 30 秒 / 盘后 5 分';
+    $('stFreqD').textContent='本地服务 · 交易时段 30 秒';
     var stale=(age!=null&&age>10);
     var degraded=API.sources&&API.sources.caps!=='东方财富';
-    if(stale){ $('stState').textContent='数据可能过期'; $('stState').style.color='var(--rose)'; }
+    if(stale){ $('stState').textContent='数据可能过期'; $('stState').style.color='var(--rose)';
+               $('stStateD').textContent='最后更新 '+upd+'，刷新线程可能停摆'; }
     else if(degraded){ $('stState').textContent='降级运行'; $('stState').style.color='var(--amber)'; }
     else { $('stState').textContent='运行中'; $('stState').style.color='var(--green)'; }
   }
@@ -1141,7 +1187,8 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   var GROUPS=[
     {name:'红利防御',codes:['sh000922','sz399986']},
     {name:'大消费',codes:['sh000932','sz399997','sh000991']},
-    {name:'金融弹性',codes:['sz399975']}
+    {name:'金融弹性',codes:['sz399975']},
+    {name:'港股对照',codes:['hkHSI','hkHSTECH']}
   ];
 
   function trendTag(it){
@@ -1321,7 +1368,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     var P=palette(), opt;
     if(idxView==='trend'){
       var dates=IDX.norm.dates;
-      // 图例改为平铺换行：14 个指数一次全部可见，避免分页后“全选”看不出效果
+      // 图例改为平铺换行：全部指数一次可见，避免分页后“全选”看不出效果
       var perRow=Math.max(3,Math.floor((el.clientWidth||720)/92));
       var legendTop=Math.ceil(IDX.indices.length/perRow)*22+12;
       var series=IDX.indices.map(function(x,i){
@@ -1458,10 +1505,22 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     renderIdxTable();
   }
 
-  function renderIndices(){ renderIdxSummary(); renderIdxTable(); renderBigThree(); renderWide(); renderGroups(); drawIdxChart(); updateLegendBtn(); if(idxSelected) showIdxDetail(idxSelected); }
+  function renderIdxFresh(){
+    var el=$('idxFresh'); if(!el) return;
+    if(!IDX||!IDX.updated){ el.textContent=''; return; }
+    var u=String(IDX.updated), m=u.match(/(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2}):(\d{2})/);
+    if(!m){ el.textContent=''; return; }
+    var ms=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-8,+m[5],+m[6]);
+    var age=Math.max(0,Math.round((Date.now()-ms)/60000));
+    var late=marketOpenNow()?age>15:age>90;
+    el.innerHTML='指数数据更新于 '+u.slice(5,16)+'（'+age+' 分钟前）· 共 '+((IDX.indices||[]).length)+' 个指数'
+      +(late?' · <b style="color:var(--rose)">数据可能滞后</b>':'');
+  }
+
+  function renderIndices(){ renderIdxSummary(); renderIdxTable(); renderBigThree(); renderWide(); renderGroups(); drawIdxChart(); updateLegendBtn(); renderValExtra(); renderIdxFresh(); if(idxSelected) showIdxDetail(idxSelected); }
 
   function pollIndices(){
-    fetch('api/indices?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+    fetch(apiURL('api/indices')+'?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
       if(d && d.indices && d.indices.length){ IDX=d; renderIndices(); }
       else if(!IDX && window.INDEX_DATA){ IDX=window.INDEX_DATA; renderIndices(); }
     }).catch(function(){
@@ -1629,7 +1688,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
     $('intraCaption').textContent=dayLabel+'盘中 · 证券化率（'+rows.length+' 个快照）';
     $('intraRange').textContent=mn.toFixed(2)+'% – '+mx.toFixed(2)+'%';
-    $('intraTag').textContent='当前 '+vals[vals.length-1].toFixed(2)+'%';
+    $('intraTag').textContent='末笔 '+times[times.length-1]+' · '+vals[vals.length-1].toFixed(2)+'%';
     $('intraTag').className='tag '+classOf(vals[vals.length-1]);
     charts.intra.setOption({
       backgroundColor:'transparent',animationDuration:200,
@@ -1675,17 +1734,23 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
   }
 
   function poll(){
-    fetch('api/data?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
-      if(!d||!d.series) return;
+    fetch(apiURL('api/data')+'?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+      probed=true;
+      if(!d||!d.series){ if(!API) renderStatus(); return; }
       API=d;
+      if($('openHint')) $('openHint').style.display='none';
       $('stState').textContent='运行中'; $('stState').style.color='var(--green)';
       applyData();
       checkAlerts();
       lastUpdated=d.updated;
     }).catch(function(){
+      probed=true;
+      if(location.protocol==='file:' && $('openHint')) $('openHint').style.display='block';
       if(!API){
         if(LIVE){ renderStatus(); }
-        else { $('stState').textContent='未连接'; $('stState').style.color='var(--rose)'; }
+        else { $('stState').textContent='未连接'; $('stState').style.color='var(--rose)';
+               $('stFreq').textContent='无可用数据源';
+               $('stFreqD').textContent=location.protocol==='file:'?'文件方式打开 · 无法连本地服务':'本地服务未响应'; }
       }
     });
   }
@@ -1788,11 +1853,43 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     var payload={mode:$('cfgMode').value,low:Number($('cfgLow').value),mid:Number($('cfgMid').value),
       high:Number($('cfgHigh').value),rf:Number($('cfgRf').value),gdp_ttm:Number($('cfgTtm').value),
       rolling_months:Number($('cfgWin').value)};
-    fetch('api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+    fetch(apiURL('api/config'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(function(res){
         if(res.ok){ toast('设置已保存，正在刷新'); setTimeout(poll,800); } else { toast('保存失败'); }
       }).catch(function(){ toast('离线模式无法保存'); });
   });
+
+  // 指标说明：悬浮或点击指标旁的 ? 显示解释气泡
+  (function(){
+    var pop=document.createElement('div'); pop.className='tip-pop'; document.body.appendChild(pop);
+    var cur=null;
+    function nearBtn(el){
+      while(el&&el!==document.body){
+        if(el.classList&&el.classList.contains('tip-btn')) return el;
+        el=el.parentNode;
+      }
+      return null;
+    }
+    function show(btn){
+      var txt=btn.getAttribute('data-tip'); if(!txt) return;
+      pop.textContent=txt; pop.style.display='block';
+      var r=btn.getBoundingClientRect(), pw=pop.offsetWidth, ph=pop.offsetHeight;
+      var left=Math.min(Math.max(8,r.left+r.width/2-pw/2),window.innerWidth-pw-8);
+      var top=r.top-ph-8; if(top<8) top=r.bottom+8;
+      pop.style.left=left+'px'; pop.style.top=top+'px';
+      cur=btn;
+    }
+    function hide(){ pop.style.display='none'; cur=null; }
+    document.addEventListener('mouseover',function(e){ var b=nearBtn(e.target); if(b) show(b); });
+    document.addEventListener('mouseout',function(e){ var b=nearBtn(e.target); if(b&&cur===b) hide(); });
+    document.addEventListener('click',function(e){
+      var b=nearBtn(e.target);
+      if(b){ e.preventDefault(); if(cur===b){ hide(); } else { show(b); } }
+      else { hide(); }
+    });
+    window.addEventListener('scroll',hide,{passive:true});
+    window.addEventListener('resize',hide);
+  })();
 
   initTheme();
   if(!D){ $('heroVal').textContent='--'; toast('data.js 未加载'); return; }
@@ -1804,7 +1901,7 @@ document.write('<script src="data.js?t='+t+'"><\/script>');})();
     fetchLive();
     setInterval(poll,30000);
     setInterval(pollIndices,60000);
-    setInterval(fetchLive,30*60*1000);
+    setInterval(fetchLive,5*60*1000);
     setInterval(function(){ if(!API) renderStatus(); },60000);
     document.addEventListener('visibilitychange',function(){ if(!document.hidden) fetchLive(); });
   });
