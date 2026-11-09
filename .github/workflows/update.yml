@@ -6,7 +6,8 @@ on:
     paths-ignore:
       - "docs/**"
   schedule:
-    - cron: "4,14,24,34,44,54 1-7 * * 1-5"
+    # UTC 1-3,5-7 点 = 北京 9:07-15:37 每 30 分钟（跳过午休）；低频+避开热门整点，降低 GitHub 高负载时丢弃调度运行的概率
+    - cron: "7,37 1-3,5-7 * * 1-5"
   workflow_dispatch:
 
 permissions:
