@@ -23,6 +23,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -34,6 +36,9 @@ jobs:
         run: python scripts/build_static.py
       - name: Fetch ECharts
         run: curl -fsSL https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js -o docs/echarts.min.js || echo "echarts download failed"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
       - name: Commit updated data
         run: |
           git config user.name "github-actions[bot]"
@@ -41,11 +46,9 @@ jobs:
           git add docs
           if ! git diff --staged --quiet; then
             git commit -m "chore: update buffett data"
+            git pull --rebase origin main
             git push
           fi
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
 
   deploy:
     needs: update
